@@ -1,0 +1,38 @@
+{
+  "name": "line-translation-bot",
+  "version": "1.0.0",
+  "description": "LINE Bot that automatically translates English to Thai and vice versa",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src --ext .ts",
+    "format": "prettier --write src api",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "line-bot",
+    "translation",
+    "thai",
+    "english",
+    "ai-translation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@line/bot-sdk": "^11.2.0",
+    "dotenv": "^16.4.5",
+    "node-cache": "^5.1.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.0",
+    "prettier": "^3.9.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
