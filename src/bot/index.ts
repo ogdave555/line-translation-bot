@@ -11,8 +11,8 @@
  * - Skips non-text messages (images, videos, URLs, emojis)
  */
 
-import { getConfig } from './config.js';
-import { initMemory } from './memory.js';
+import { getConfig } from '../core/config.js';
+import { initMemory } from '../translation/memory.js';
 
 // Load configuration
 const config = getConfig();
@@ -24,8 +24,8 @@ console.log('✅ Memory system initialized');
 
 // Export bot creation function for Vercel
 export { createBot } from './bot.js';
-export { translate, translateWithMemory } from './translator.js';
-export { getConfig } from './config.js';
+export { translate, translateWithMemory } from '../translation/translator.js';
+export { getConfig } from '../core/config.js';
 
 // For local development testing
 if (import.meta.url.replace('file://', '') === import.meta.dirname + '/index.ts' || 

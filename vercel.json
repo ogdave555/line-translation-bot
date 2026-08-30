@@ -6,7 +6,9 @@
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
-          "data/*"
+          "data/*",
+          "src/core/**",
+          "src/translation/**"
         ]
       }
     }

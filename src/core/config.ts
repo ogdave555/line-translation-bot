@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
+// OpenRouter API endpoint — used by both src/translator.ts and api/webhook.ts
+export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
 /**
  * Model Configuration
  *

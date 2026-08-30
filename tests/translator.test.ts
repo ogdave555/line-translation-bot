@@ -7,7 +7,7 @@ process.env.CHANNEL_SECRET = 'test-secret';
 process.env.OPENROUTER_API_KEY = 'test-key';
 
 // Dynamic import ensures env vars are set before config.ts loads
-const config = await import('../src/config');
+const config = await import('../src/core/config');
 const { containsExplicitContent, getSystemPrompt, getHermesSystemPrompt, MODELS, englishExplicit } = config;
 
 describe('containsExplicitContent', () => {

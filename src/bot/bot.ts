@@ -4,9 +4,9 @@
  */
 
 import { LineBotClient } from '@line/bot-sdk';
-import { translateWithMemory } from './translator';
-import { shouldSkipMessage, cleanTextForTranslation } from './utils';
-import type { LineEvent } from './types';
+import { translateWithMemory } from '../translation/translator';
+import { shouldSkipMessage, cleanTextForTranslation } from '../core/utils';
+import type { LineEvent } from '../core/types';
 
 /**
  * Bot event handler class

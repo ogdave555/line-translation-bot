@@ -5,7 +5,7 @@
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { detectLanguage } from './utils';
+import { detectLanguage } from '../core/utils';
 
 // Path to memory storage file
 const MEMORY_FILE = join(dirname(import.meta.url), '..', 'data', 'memory.json');

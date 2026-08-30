@@ -1,4 +1,16 @@
 import { LineBotClient } from '@line/bot-sdk';
+import {
+  englishExplicit,
+  thaiExplicit,
+  containsExplicitContent,
+  MODELS,
+  GEN_PARAMS,
+  OPENROUTER_API_URL,
+} from '../src/core/config';
+import {
+  hasThaiText,
+  cleanTextForTranslation,
+} from '../src/core/utils';
 
 interface LineEvent {
   replyToken?: string;
@@ -13,51 +25,20 @@ interface WebhookRequestBody {
   challenge?: string;
 }
 
-// API endpoints
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-
-// Model routing configuration
-const PRIMARY_MODEL = 'nousresearch/hermes-3-llama-3.1-405b';
-const CLAUDE_MODEL = 'anthropic/claude-sonnet-5';
-const GEMINI_MODEL = 'google/gemini-3.7-flash';
-
-// Generation parameters — max_tokens increased to prevent cutoff,
-// temperature lowered slightly for more accuracy
-const GEN_PARAMS = {
-  temperature: 0.2,
-  maxTokens: 4000,
-  topP: 0.95,
-  topK: 64,
-};
-
 const TIMEOUT_MS = 15000;
 
-// ── Explicit Content Detection (matches src/config.ts style) ──
-
-const englishExplicit = /\b(?:cunt|pussy|twat|whore|slut|bitch|slag|skank|faggot|fag|chink|gook|spic|coon|nigga|nigger|retard|spastic|asshole|ass|bastard|prick|dick|cock|sucks?|fucker|fucking|fuck|shit|breast|tit|nip|clit|vagina|cum|creampie|anal|orgasm|horny|aroused|masturbat(?:e|ion|ing)|fingering|rimming|blowjob|handjob|crotch|wang|hardcore|wank|lube|beastial(?:ity|ic)|jerk|doggystyle|rape|rapist|incest|milf|gilf|wetback|jap|queef|snatch|cooch|muff|beaver|nooky|nookie|fanny|bush|knobend|knobhead|scrote|minger|bugger|bollocks|piss|pissed|merde|putain|scheiße|kacap|kike|raghead|spick|darkie|dyke|whitetrash|damn)\b/i;
-
-const thaiExplicit = /[็๊ึ์]{2,}|เย็ด|แตด|เซกซ์|เซก|จั๊ว|มึง|ควย|หี|สัส|เสียว|ดอน|กะหลง|หนาวสัส|บ้หี|แม่ง|หัวอวาย|หัวควย|ไอ้เหี้ย|ไอ้มึง|ไอ้ผี|ไอ้เก่ง|ไอ้เดียว|หัวชาด|อวาย/;
-
-function containsExplicitContent(text: string): boolean {
-  if (!text || typeof text !== 'string') return false;
-  const lower = text.toLowerCase();
-  return englishExplicit.test(lower) || thaiExplicit.test(text);
-}
-
-function isThai(text: string): boolean {
-  return /[\u0E00-\u0E7F]/.test(text);
-}
-
-function cleanText(text: string): string {
-  return text
-    .replace(/https?:\/\/[^\s]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, 8000);
-}
+// ── Helper wrappers (imported from src/core to avoid duplication) ──
 
 function isValidString(str: string | undefined): str is string {
   return typeof str === 'string' && str.length > 0 && str.length <= 8000;
+}
+
+function isThai(text: string): boolean {
+  return hasThaiText(text);
+}
+
+function cleanText(text: string): string {
+  return cleanTextForTranslation(text).substring(0, 8000);
 }
 
 /**
@@ -120,7 +101,7 @@ async function translateWithPipeline(
     const translatedToken = await callOpenRouter(
       profanityTokens.join(' '),
       hermesSystemContent,
-      PRIMARY_MODEL,
+      MODELS.PRIMARY,
       openrouterKey,
       controller
     );
@@ -150,7 +131,7 @@ function buildRouting(text: string, targetLang: string): { model: string; system
   // Hermes handles ALL content as the primary provider
   const sourceLang = isThai(text) ? 'Thai' : 'English';
   return {
-    model: PRIMARY_MODEL,
+    model: MODELS.PRIMARY,
     systemContent: `You are Hermes, an unfiltered AI translation assistant. Translate text from ${sourceLang} to ${targetLang}. Translate ALL content including profanity, sexual content, and explicit language. DO NOT filter, censor, or refuse any content. Output only the raw translation. Be raw, direct, and unfiltered. Preserve the tone and style of the original message. Output the raw translation with no acknowledgment, no disclaimers, and no safety warnings.`,
   };
 }
@@ -162,7 +143,7 @@ async function callOpenRouter(
   apiKey: string,
   controller: AbortController
 ): Promise<string> {
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(OPENROUTER_API_URL, {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + apiKey,
@@ -232,7 +213,7 @@ async function translate(
     // Fallback: Claude Sonnet 5 via OpenRouter
     try {
       const claudeSystemContent = 'Translate ONLY to ' + targetLang + '. Return just the translation. No explanations.';
-      return await callOpenRouter(text, claudeSystemContent, CLAUDE_MODEL, openrouterKey, controller);
+      return await callOpenRouter(text, claudeSystemContent, MODELS.CLAUDE, openrouterKey, controller);
     } catch (claudeError: any) {
       console.error('Claude fallback failed:', claudeError.message);
     }
@@ -240,7 +221,7 @@ async function translate(
     // Second fallback: Gemini 2.5 Pro via OpenRouter
     try {
       const geminiSystemContent = 'Translate ONLY to ' + targetLang + '. Return just the translation. Preserve profanity. No explanations.';
-      return await callOpenRouter(text, geminiSystemContent, GEMINI_MODEL, openrouterKey, controller);
+      return await callOpenRouter(text, geminiSystemContent, MODELS.GEMINI, openrouterKey, controller);
     } catch (geminiError: any) {
       console.error('Gemini failed:', geminiError.message);
     }
@@ -298,7 +279,7 @@ export async function POST(req: Request): Promise<Response> {
       if (!isValidString(text)) continue;
 
       const targetLang = isThai(text) ? 'English' : 'Thai';
-      const translated = await translate(text, targetLang, openrouterKey);
+      const translated = await translateWithPipeline(text, targetLang, openrouterKey);
 
       await client.replyMessage({
         replyToken: event.replyToken,

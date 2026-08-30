@@ -6,8 +6,8 @@
  *   3. Gemini 2.5 Pro   — second fallback for clean content
  */
 
-import { getSystemPrompt, getGeminiSystemPrompt, getHermesSystemPrompt, getConfig, GEN_PARAMS, containsExplicitContent, MODELS, englishExplicit, thaiExplicit } from './config';
-import { TranslationResponse, TranslationRequest } from './types';
+import { getSystemPrompt, getGeminiSystemPrompt, getHermesSystemPrompt, getConfig, GEN_PARAMS, containsExplicitContent, MODELS, englishExplicit, thaiExplicit } from '../core/config';
+import { TranslationResponse, TranslationRequest } from '../core/types';
 import { getRecentMessages, addToMemory } from './memory';
 
 // OpenRouter API endpoint
