@@ -6,8 +6,8 @@
  * Features:
  * - Personalized translation based on user profiles
  * - Conversation memory for context
- * - Profanity preservation (not filtering)
- * - Fallback to OpenRouter if Gemini fails
+   * - Profanity preservation (not filtering)
+ * - Routing: Claude Sonnet 5 (primary, OpenRouter) → Gemini (backup, Gemini API) → Hermes 3 (explicit content)
  * - Skips non-text messages (images, videos, URLs, emojis)
  */
 

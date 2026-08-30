@@ -7,9 +7,9 @@ A LINE bot that automatically translates English to Thai and vice versa, designe
 - ✨ **Bi-directional translation**: English ↔ Thai
 - 🎯 **Personalized translations**: Tailored for specific user profiles
 - 🧠 **Conversation memory**: Remembers recent context for better translations
-- 🚀 **Dual AI support**: Gemini Flash (primary) + OpenRouter (fallback)
+- 🚀 **Triple AI routing**: Claude Sonnet 5 (primary, OpenRouter) + Gemini 2.5 Pro (backup, Gemini API) + Hermes 3 (explicit content, OpenRouter)
 - 🔞 **Profanity preservation**: Translates profanity in both languages
-- ⚡ **Fast response**: Optimized for instant messaging
+- ⚡ **Smart response**: Optimized parameters for accuracy
 - 📱 **Smart filtering**: Skips images, videos, URLs, emojis, etc.
 
 ## User Profiles
@@ -107,8 +107,11 @@ vercel
 1. User sends a message in the LINE group
 2. Bot receives the message via webhook
 3. Bot detects message type (text vs image, etc.)
-4. Text messages are translated to the recipient's language
-5. Translation is sent as a reply
+4. Bot checks for explicit content (English/Thai profanity, sexual content)
+5. Explicit content → routed to Hermes 3 via OpenRouter (exclusive, unfiltered)
+6. Normal content → translated by Claude Sonnet 5 via OpenRouter (primary)
+7. If Claude fails → falls back to Gemini 2.5 Pro via Gemini API (backup)
+8. Translation is sent as a reply
 
 ## Message Types Handled
 
@@ -121,6 +124,8 @@ vercel
 - Profanity words are translated normally if they exist in target language
 - If not, equivalent vulgar terms are used
 - No filtering or censorship
+- Messages with explicit content (English/Thai) are routed to **Hermes 3** via OpenRouter,
+  bypassing Claude Sonnet 5 and Gemini to avoid safety refusals
 
 ### Context Awareness
 - Stores last 20 messages per conversation
@@ -178,7 +183,8 @@ LINE-BOT/
 
 ### Translation failing
 - Check GEMINI_API_KEY and OPENROUTER_API_KEY
-- Both are required for fallback functionality
+- Both are required: OpenRouter for primary (Claude Sonnet 5) and Hermes 3,
+  Gemini API for fallback (Gemini 2.5 Pro)
 
 ### Messages not translating
 - Bot must be in the group
@@ -187,8 +193,8 @@ LINE-BOT/
 
 ## Cost Management
 
-- **Gemini Free Tier**: 750M tokens/month
-- **OpenRouter**: Pay-per-use model
+- **OpenRouter**: Pay-per-use for Claude Sonnet 5 (primary) and Hermes 3 (explicit content)
+- **Gemini API**: Free tier available for Gemini 2.5 Pro (backup)
 - Monitor usage in respective dashboards
 
 ## License

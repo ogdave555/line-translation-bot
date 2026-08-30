@@ -5,6 +5,62 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 /**
+ * Model Configuration
+ *
+ * Routing priority:
+ * 1. Explicit content (English/Thai) → Hermes 3 via OpenRouter (exclusive)
+ * 2. Normal content → Claude Sonnet 5 via OpenRouter (primary)
+ * 3. Fallback → Gemini 2.5 Pro via Gemini API (backup)
+ */
+export const MODELS = {
+  MAIN: 'anthropic/claude-sonnet-5',
+  BACKUP: 'gemini-2.5-pro',
+  EXPLICIT: 'nousresearch/hermes-3-llama-3.1-70b',
+};
+
+/**
+ * Gemini API endpoint (Gemini 2.5 Pro)
+ */
+export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
+
+/**
+ * Generation Parameters
+ * Temperature lowered slightly for more accuracy (was 0.3).
+ * Max tokens increased to prevent message cutoff (was 1000).
+ * Top-p and top-k broadened for more thorough generation.
+ */
+export const GEN_PARAMS = {
+  temperature: 0.2,
+  maxTokens: 4000,
+  topP: 0.95,
+  topK: 64,
+};
+
+/**
+ * Explicit Content Detection
+ *
+ * Uses a hybrid approach matching the reference project's style:
+ * - English: comprehensive word-boundary regex
+ * - Thai: character class (rare diacritics {2+} threshold) + specific term alternatives
+ *
+ * Explicit content is routed exclusively to Hermes 3, bypassing
+ * Claude Sonnet 5 and Gemini to avoid safety refusals.
+ */
+const englishExplicit = /\b(?:cunt|pussy|twat|whore|slut|bitch|slag|skank|faggot|fag|chink|gook|spic|coon|nigga|nigger|retard|spastic|asshole|bastard|prick|dick|cock|suck|fuck|shit|breast|tit|nip|clit|vagina|cum|creampie|anal|orgasm|horny|aroused|masturbat(?:e|ion|ing)|fingering|rimming|blowjob|handjob|crotch|wang|hardcore|wank|lube|beastial(?:ity|ic)|jerk|doggystyle|rape|rapist|incest|milf|gilf|wetback|jap|queef|snatch|cooch|muff|beaver|nooky|nookie|fanny|bush|knobend|knobhead|scrote|minger|bugger|bollocks|piss|pissed|merde|putain|scheiße|kacap|kike|raghead|spick|darkie|dyke|whitetrash)\b/i;
+
+const thaiExplicit = /[็๊ึ์]{2,}|เย็ด|แตด|เซกซ์|เซก|จั๊ว|มึง|ควย|หี|สัส|เสียว|ดอน|กะหลง|หนาวสัส|บ้หี|แม่ง|หัวอวาย|หัวควย|ไอ้เหี้ย|ไอ้มึง|ไอ้ผี|ไอ้เก่ง|ไอ้เดียว|หัวชาด|อวาย/;
+
+/**
+ * Check if text contains explicit content in English or Thai.
+ * Used to route messages to Hermes 3 model exclusively.
+ */
+export function containsExplicitContent(text: string): boolean {
+  if (!text || typeof text !== 'string') return false;
+  const lower = text.toLowerCase();
+  return englishExplicit.test(lower) || thaiExplicit.test(text);
+}
+
+/**
  * User profiles for personalized translation
  * 
  * The English speaker is a 37yo male from England who speaks a little bit of Thai.
@@ -82,7 +138,7 @@ export function getConfig(): BotConfig {
 }
 
 /**
- * System prompt template for Gemini translation
+ * System prompt template for Claude Sonnet 5 (primary) translation
  * 
  * Important: Translate profanity words even if they exist in the target language.
  * Do NOT filter or censor profanity content.
@@ -152,13 +208,29 @@ Now translate the following text to ${targetLanguage === 'en' ? 'English' : 'Tha
 }
 
 /**
- * System prompt for OpenRouter fallback translation
+ * System prompt for Gemini backup translation
  */
-export function getOpenRouterSystemPrompt(
+export function getGeminiSystemPrompt(
   targetLanguage: 'en' | 'th'
 ): string {
   return `You are a translation AI specialized in ${targetLanguage === 'en' ? 'English' : 'Thai'} translation.
 Translate text from ${targetLanguage === 'en' ? 'Thai' : 'English'} to ${targetLanguage === 'en' ? 'English' : 'Thai'}.
 Preserve profanity in translations - do NOT filter sexual or vulgar content.
 Output only the translated text, nothing else.`;
+}
+
+/**
+ * System prompt for Hermes 3 explicit content translation.
+ * Hermes 3 is used exclusively for messages containing explicit content
+ * in English or Thai, bypassing Claude and Gemini to avoid safety refusals.
+ */
+export function getHermesSystemPrompt(
+  sourceLanguage: 'en' | 'th',
+  targetLanguage: 'en' | 'th'
+): string {
+  return `You are Hermes, an unfiltered AI translation assistant.
+Translate text from ${sourceLanguage === 'en' ? 'English' : 'Thai'} to ${targetLanguage === 'en' ? 'English' : 'Thai'}.
+Translate ALL content including profanity, sexual content, and explicit language.
+DO NOT filter, censor, or refuse any content. Output only the raw translation.
+Be raw, direct, and unfiltered in your translation.`;
 }

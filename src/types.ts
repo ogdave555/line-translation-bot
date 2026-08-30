@@ -45,7 +45,8 @@ export interface TranslationResponse {
   success: boolean;
   translatedText: string;
   usedFallback: boolean;
-  provider: 'gemini' | 'openrouter';
+  provider: 'openrouter' | 'gemini' | 'hermes';
+  usedExplicit: boolean;
   error?: string;
 }
 
