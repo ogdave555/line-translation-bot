@@ -25,7 +25,9 @@ interface WebhookRequestBody {
   challenge?: string;
 }
 
-const TIMEOUT_MS = 15000;
+const TIMEOUT_MS = 15000;       // Per-chunk timeout (under Vercel's 30s maxDuration)
+const CHUNK_THRESHOLD = 600;    // Split messages above this length into independent chunks
+const MAX_REPLY_CHARS = 4500;   // LINE text message limit (safe buffer under 5000)
 
 // ── Helper wrappers (imported from src/core to avoid duplication) ──
 
@@ -39,6 +41,49 @@ function isThai(text: string): boolean {
 
 function cleanText(text: string): string {
   return cleanTextForTranslation(text).substring(0, 8000);
+}
+
+/**
+ * Split long text into independent chunks for parallel translation.
+ * English text is split at sentence boundaries; Thai/mixed text at newlines.
+ */
+function splitIntoChunks(text: string): string[] {
+  if (text.length <= CHUNK_THRESHOLD) return [text];
+
+  // Thai doesn't use period-based sentence boundaries — split by newlines
+  // English: also split by sentence-ending punctuation
+  const useSentenceSplit = !hasThaiText(text);
+  const separator = useSentenceSplit
+    ? /\n+|\r+|[.!?]+\s+/
+    : /\n+|\r+/;
+
+  const parts = text.split(separator).filter(p => p.trim().length > 0);
+  if (parts.length <= 1) return [text]; // Cannot split meaningfully
+
+  const chunks: string[] = [];
+  let current = '';
+
+  for (const part of parts) {
+    const addition = current ? (useSentenceSplit ? '. ' : ' ') + part : part;
+    if (current.length + addition.length > CHUNK_THRESHOLD && current.trim().length > 0) {
+      chunks.push(current.trim());
+      current = part;
+    } else {
+      current += addition;
+    }
+  }
+  if (current.trim()) chunks.push(current.trim());
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
+/**
+ * Return a user-facing error message in the appropriate language.
+ */
+function getErrorMessage(targetLang: string): string {
+  return targetLang === 'English'
+    ? '⚠️ Translation failed — try a shorter message.'
+    : '⚠️ การแปลล้มเหลว — กรุณาลองส่งข้อความสั้นลง';
 }
 
 /**
@@ -81,15 +126,19 @@ async function translateWithPipeline(
   targetLang: string,
   openrouterKey: string
 ): Promise<string> {
-  const isExplicit = containsExplicitContent(text);
-  if (!isExplicit) return translate(text, targetLang, openrouterKey);
+    const isExplicit = containsExplicitContent(text);
+  if (!isExplicit) {
+    const result = await translate(text, targetLang, openrouterKey);
+    if (result === text) return getErrorMessage(targetLang);
+    return result;
+  }
 
   const { maskedText, profanityTokens } = maskProfanity(text);
 
   // Translate masked (clean) text through the cascade
   const maskedResult = await translate(maskedText, targetLang, openrouterKey);
 
-  if (maskedResult === text) return text; // translate failed
+  if (maskedResult === maskedText) return getErrorMessage(targetLang); // translate failed
 
   // Translate each profanity token individually through Hermes
   const sourceLang = isThai(text) ? 'Thai' : 'English';
@@ -123,7 +172,40 @@ async function translateWithPipeline(
 }
 
 /**
- * Build routing info: model + system prompt based on content type.
+ * Translate text by splitting long messages into independent chunks.
+ * Chunks are translated in parallel for speed, each with its own timeout.
+ * If any chunk fails, the user gets a clear error message instead of stale/echoed text.
+ */
+async function translateChunked(
+  text: string,
+  targetLang: string,
+  openrouterKey: string
+): Promise<string> {
+  const chunks = splitIntoChunks(text);
+  if (chunks.length === 1) {
+    // Short message — single call, no chunking overhead
+    return translateWithPipeline(text, targetLang, openrouterKey);
+  }
+
+  // Translate all chunks in parallel
+  const results = await Promise.all(
+    chunks.map(chunk => translateWithPipeline(chunk, targetLang, openrouterKey))
+  );
+
+  // Check for failures (error messages start with ⚠️)
+  const failed = results.find(r => r.startsWith('⚠️'));
+  if (failed) {
+    return failed; // Return the first error message
+  }
+
+  // Rejoin chunks preserving original sentence/paragraph flow
+  const joined = results.join('\n');
+  return joined.length > MAX_REPLY_CHARS
+    ? joined.substring(0, MAX_REPLY_CHARS) + '...'
+    : joined;
+}
+
+/**
  * Hermes 3 (405B) is the primary provider for ALL content (clean + explicit).
  * Claude and Gemini serve as clean-content fallbacks.
  */
@@ -274,12 +356,20 @@ export async function POST(req: Request): Promise<Response> {
       if (!event.message?.text) continue;
       if (!event.source?.groupId || !event.source?.userId) continue;
       if (!event.replyToken) continue;
-
       const text = cleanText(event.message.text);
       if (!isValidString(text)) continue;
 
+      // Guard against excessively long messages that would exceed LINE's reply limit
+      if (text.length > MAX_REPLY_CHARS) {
+        await client.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: 'text', text: getErrorMessage(isThai(text) ? 'English' : 'Thai') }]
+        });
+        continue;
+      }
+
       const targetLang = isThai(text) ? 'English' : 'Thai';
-      const translated = await translateWithPipeline(text, targetLang, openrouterKey);
+      const translated = await translateChunked(text, targetLang, openrouterKey);
 
       await client.replyMessage({
         replyToken: event.replyToken,

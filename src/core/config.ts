@@ -29,7 +29,7 @@ export const MODELS = {
  */
 export const GEN_PARAMS = {
   temperature: 0.2,
-  maxTokens: 4000,
+  maxTokens: 2000,
   topP: 0.95,
   topK: 64,
 };

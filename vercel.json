@@ -5,6 +5,7 @@
       "src": "api/webhook.ts",
       "use": "@vercel/node",
       "config": {
+        "maxDuration": 30,
         "includeFiles": [
           "data/*",
           "src/core/config.ts",
