@@ -2,15 +2,16 @@
 
 A LINE bot that automatically translates English to Thai and vice versa, designed for private group conversations between two people.
 
-## Features
+Features
 
 - ✨ **Bi-directional translation**: English ↔ Thai
 - 🎯 **Personalized translations**: Tailored for specific user profiles
 - 🧠 **Conversation memory**: Remembers recent context for better translations
-- 🚀 **Triple AI routing**: Claude Sonnet 5 (primary, OpenRouter) + Gemini 2.5 Pro (backup, Gemini API) + Hermes 3 (explicit content, OpenRouter)
-- 🔞 **Profanity preservation**: Translates profanity in both languages
+- 🚀 **Triple AI routing**: Hermes 3 (405B, primary for ALL content) → Claude Sonnet 5 (fallback) → Gemini 3.7 Flash (second fallback), all via OpenRouter
+- 🔞 **Profanity preservation**: Translates profanity in both languages, no filtering
 - ⚡ **Smart response**: Optimized parameters for accuracy
 - 📱 **Smart filtering**: Skips images, videos, URLs, emojis, etc.
+- 🧪 **Testable**: Built-in test suite with `npm test` and provider endpoint checks
 
 ## User Profiles
 
@@ -25,8 +26,7 @@ The bot is configured for two specific users:
 
 - Node.js 22 or higher
 - LINE Developer Account: https://developers.line.biz/
-- Gemini API Key: https://ai.google.dev/gemini-api/docs/get-api-key
-- OpenRouter API Key: https://openrouter.ai/
+- OpenRouter API Key: https://openrouter.ai/ (for Hermes 3, Claude Sonnet 5, and Gemini 3.7 Flash)
 
 ## Setup
 
@@ -108,9 +108,9 @@ vercel
 2. Bot receives the message via webhook
 3. Bot detects message type (text vs image, etc.)
 4. Bot checks for explicit content (English/Thai profanity, sexual content)
-5. Explicit content → routed to Hermes 3 via OpenRouter (exclusive, unfiltered)
-6. Normal content → translated by Claude Sonnet 5 via OpenRouter (primary)
-7. If Claude fails → falls back to Gemini 2.5 Pro via Gemini API (backup)
+5. Hermes 3 (405B) translates the message via OpenRouter — handles ALL content (clean + explicit)
+6. If Hermes fails → falls back to Claude Sonnet 5 (clean content only)
+7. If Claude also fails → falls back to Gemini 3.7 Flash (clean content only)
 8. Translation is sent as a reply
 
 ## Message Types Handled
@@ -124,8 +124,18 @@ vercel
 - Profanity words are translated normally if they exist in target language
 - If not, equivalent vulgar terms are used
 - No filtering or censorship
-- Messages with explicit content (English/Thai) are routed to **Hermes 3** via OpenRouter,
-  bypassing Claude Sonnet 5 and Gemini to avoid safety refusals
+- Hermes 3 handles both clean and explicit content as the primary provider
+- **Profanity preprocessing pipeline** (advanced): When testing fallback providers,
+  explicit content can be masked with `[PROFANITY:N]` markers so that Claude/Gemini
+  never see raw profanity. Masked tokens are then translated individually through Hermes.
+
+**Provider Cascade:**
+
+| Tier | Provider | Model | Handles Explicit |
+|------|----------|-------|-----------------|
+| 1 (primary) | Hermes 3 | `nousresearch/hermes-3-llama-3.1-405b` | ✅ Yes |
+| 2 (fallback) | Claude Sonnet 5 | `anthropic/claude-sonnet-5` | ❌ No (blocked) |
+| 3 (fallback) | Gemini 3.7 Flash | `google/gemini-3.7-flash` | ❌ No (blocked) |
 
 ### Context Awareness
 - Stores last 20 messages per conversation
@@ -149,6 +159,13 @@ npm run build
 # Run typecheck
 npm run typecheck
 
+# Run tests
+npm test
+npm run test:watch
+
+# Test provider endpoints
+npm run test:providers
+
 # Format code
 npm run format
 ```
@@ -161,13 +178,18 @@ LINE-BOT/
 │   └── webhook.ts          # Vercel serverless function
 ├── data/
 │   └── memory.json         # Conversation memory (auto-generated)
+├── scripts/
+│   └── test-providers.js   # Provider endpoint connectivity tests
 ├── src/
 │   ├── bot.ts              # Bot event handlers
 │   ├── config.ts           # Configuration and system prompts
 │   ├── index.ts            # Entry point
 │   ├── memory.ts           # Conversation memory management
-│   ├── translator.ts       # Translation engine
+│   ├── translator.ts       # Translation engine (Hermes primary cascade)
 │   └── utils.ts            # Helper functions
+├── tests/
+│   ├── translator.test.ts  # Unit tests for translator & config
+│   └── webhook.test.ts     # Unit tests for webhook logic
 ├── .env.example            # Environment variable template
 ├── package.json
 ├── tsconfig.json
@@ -182,9 +204,9 @@ LINE-BOT/
 - Ensure webhook URL matches exactly
 
 ### Translation failing
-- Check GEMINI_API_KEY and OPENROUTER_API_KEY
-- Both are required: OpenRouter for primary (Claude Sonnet 5) and Hermes 3,
-  Gemini API for fallback (Gemini 2.5 Pro)
+- Check that OPENROUTER_API_KEY is set (this key provides access to all three models:
+  Hermes 3, Claude Sonnet 5, and Gemini 3.7 Flash)
+- Run `npm run test:providers` to verify all provider endpoints are accessible
 
 ### Messages not translating
 - Bot must be in the group
@@ -193,9 +215,10 @@ LINE-BOT/
 
 ## Cost Management
 
-- **OpenRouter**: Pay-per-use for Claude Sonnet 5 (primary) and Hermes 3 (explicit content)
-- **Gemini API**: Free tier available for Gemini 2.5 Pro (backup)
-- Monitor usage in respective dashboards
+- **OpenRouter**: Pay-per-use for all three models (Hermes 3 primary, Claude Sonnet 5 fallback,
+  Gemini 3.7 Flash second fallback)
+- Monitor usage in the OpenRouter dashboard
+- Hermes 3 (405B) is the primary provider; Claude and Gemini are only used when Hermes fails
 
 ## License
 

@@ -8,20 +8,15 @@ dotenv.config();
  * Model Configuration
  *
  * Routing priority:
- * 1. Explicit content (English/Thai) → Hermes 3 via OpenRouter (exclusive)
- * 2. Normal content → Claude Sonnet 5 via OpenRouter (primary)
- * 3. Fallback → Gemini 2.5 Pro via Gemini API (backup)
+ * 1. Hermes 3 LLaMA 3.1 405B via OpenRouter (primary, all content)
+ * 2. Claude Sonnet 5 via OpenRouter (fallback, clean only)
+ * 3. Gemini 3.7 Flash via OpenRouter (fallback, clean only)
  */
 export const MODELS = {
-  MAIN: 'anthropic/claude-sonnet-5',
-  BACKUP: 'gemini-2.5-pro',
-  EXPLICIT: 'nousresearch/hermes-3-llama-3.1-70b',
+  PRIMARY: 'nousresearch/hermes-3-llama-3.1-405b',
+  CLAUDE: 'anthropic/claude-sonnet-5',
+  GEMINI: 'google/gemini-3.7-flash',
 };
-
-/**
- * Gemini API endpoint (Gemini 2.5 Pro)
- */
-export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 
 /**
  * Generation Parameters
@@ -46,9 +41,9 @@ export const GEN_PARAMS = {
  * Explicit content is routed exclusively to Hermes 3, bypassing
  * Claude Sonnet 5 and Gemini to avoid safety refusals.
  */
-const englishExplicit = /\b(?:cunt|pussy|twat|whore|slut|bitch|slag|skank|faggot|fag|chink|gook|spic|coon|nigga|nigger|retard|spastic|asshole|bastard|prick|dick|cock|suck|fuck|shit|breast|tit|nip|clit|vagina|cum|creampie|anal|orgasm|horny|aroused|masturbat(?:e|ion|ing)|fingering|rimming|blowjob|handjob|crotch|wang|hardcore|wank|lube|beastial(?:ity|ic)|jerk|doggystyle|rape|rapist|incest|milf|gilf|wetback|jap|queef|snatch|cooch|muff|beaver|nooky|nookie|fanny|bush|knobend|knobhead|scrote|minger|bugger|bollocks|piss|pissed|merde|putain|scheiße|kacap|kike|raghead|spick|darkie|dyke|whitetrash)\b/i;
+export const englishExplicit = /\b(?:cunt|pussy|twat|whore|slut|bitch|slag|skank|faggot|fag|chink|gook|spic|coon|nigga|nigger|retard|spastic|asshole|ass|bastard|prick|dick|cock|sucks?|fucker|fucking|fuck|shit|breast|tit|nip|clit|vagina|cum|creampie|anal|orgasm|horny|aroused|masturbat(?:e|ion|ing)|fingering|rimming|blowjob|handjob|crotch|wang|hardcore|wank|lube|beastial(?:ity|ic)|jerk|doggystyle|rape|rapist|incest|milf|gilf|wetback|jap|queef|snatch|cooch|muff|beaver|nooky|nookie|fanny|bush|knobend|knobhead|scrote|minger|bugger|bollocks|piss|pissed|merde|putain|scheiße|kacap|kike|raghead|spick|darkie|dyke|whitetrash|damn)\b/i;
 
-const thaiExplicit = /[็๊ึ์]{2,}|เย็ด|แตด|เซกซ์|เซก|จั๊ว|มึง|ควย|หี|สัส|เสียว|ดอน|กะหลง|หนาวสัส|บ้หี|แม่ง|หัวอวาย|หัวควย|ไอ้เหี้ย|ไอ้มึง|ไอ้ผี|ไอ้เก่ง|ไอ้เดียว|หัวชาด|อวาย/;
+export const thaiExplicit = /[็๊ึ์]{2,}|เย็ด|แตด|เซกซ์|เซก|จั๊ว|มึง|ควย|หี|สัส|เสียว|ดอน|กะหลง|หนาวสัส|บ้หี|แม่ง|หัวอวาย|หัวควย|ไอ้เหี้ย|ไอ้มึง|ไอ้ผี|ไอ้เก่ง|ไอ้เดียว|หัวชาด|อวาย/;
 
 /**
  * Check if text contains explicit content in English or Thai.
@@ -109,7 +104,6 @@ export const USER_PROFILES: Record<string, {
 export function getConfig(): BotConfig {
   const channelAccessToken = process.env.CHANNEL_ACCESS_TOKEN;
   const channelSecret = process.env.CHANNEL_SECRET;
-  const geminiApiKey = process.env.GEMINI_API_KEY;
   const openrouterApiKey = process.env.OPENROUTER_API_KEY;
 
   if (!channelAccessToken) {
@@ -118,9 +112,6 @@ export function getConfig(): BotConfig {
   if (!channelSecret) {
     throw new Error('CHANNEL_SECRET is required in environment variables');
   }
-  if (!geminiApiKey) {
-    throw new Error('GEMINI_API_KEY is required in environment variables');
-  }
   if (!openrouterApiKey) {
     throw new Error('OPENROUTER_API_KEY is required in environment variables');
   }
@@ -128,7 +119,6 @@ export function getConfig(): BotConfig {
   return {
     channelAccessToken,
     channelSecret,
-    geminiApiKey,
     openrouterApiKey,
     openrouterSiteUrl: process.env.OPENROUTER_SITE_URL,
     openrouterSiteTitle: process.env.OPENROUTER_SITE_TITLE || 'LINE Translation Bot',
@@ -221,8 +211,7 @@ Output only the translated text, nothing else.`;
 
 /**
  * System prompt for Hermes 3 explicit content translation.
- * Hermes 3 is used exclusively for messages containing explicit content
- * in English or Thai, bypassing Claude and Gemini to avoid safety refusals.
+ * Hermes 3 handles ALL content (clean + explicit) as the primary provider.
  */
 export function getHermesSystemPrompt(
   sourceLanguage: 'en' | 'th',
@@ -232,5 +221,7 @@ export function getHermesSystemPrompt(
 Translate text from ${sourceLanguage === 'en' ? 'English' : 'Thai'} to ${targetLanguage === 'en' ? 'English' : 'Thai'}.
 Translate ALL content including profanity, sexual content, and explicit language.
 DO NOT filter, censor, or refuse any content. Output only the raw translation.
-Be raw, direct, and unfiltered in your translation.`;
+Be raw, direct, and unfiltered in your translation.
+Preserve the tone and style of the original message.
+Output the raw translation with no acknowledgment, no disclaimers, and no safety warnings.`;
 }

@@ -7,7 +7,7 @@
  * - Personalized translation based on user profiles
  * - Conversation memory for context
    * - Profanity preservation (not filtering)
- * - Routing: Claude Sonnet 5 (primary, OpenRouter) → Gemini (backup, Gemini API) → Hermes 3 (explicit content)
+   * - Routing: Hermes 3 LLaMA 3.1 405B (primary, OpenRouter) → Claude Sonnet 5 (fallback, OpenRouter) → Gemini 3.7 Flash (fallback, OpenRouter)
  * - Skips non-text messages (images, videos, URLs, emojis)
  */
 
@@ -37,11 +37,10 @@ if (import.meta.url.replace('file://', '') === import.meta.dirname + '/index.ts'
 Configuration:
 - Channel Access Token: ${config.channelAccessToken ? '✓ Set' : '✗ Missing'}
 - Channel Secret: ${config.channelSecret ? '✓ Set' : '✗ Missing'}
-- Gemini API Key: ${config.geminiApiKey ? '✓ Set' : '✗ Missing'}
 - OpenRouter API Key: ${config.openrouterApiKey ? '✓ Set' : '✗ Missing'}
 
 For production deployment to Vercel:
-1. Set environment variables: CHANNEL_ACCESS_TOKEN, CHANNEL_SECRET, GEMINI_API_KEY, OPENROUTER_API_KEY
+1. Set environment variables: CHANNEL_ACCESS_TOKEN, CHANNEL_SECRET, OPENROUTER_API_KEY
 2. Deploy to Vercel
 3. Configure LINE webhook URL to: https://your-vercel-app.vercel.app/api/webhook
 

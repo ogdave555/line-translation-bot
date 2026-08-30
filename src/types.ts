@@ -39,13 +39,15 @@ export interface TranslationRequest {
   sourceLanguage: 'en' | 'th';
   targetLanguage: 'en' | 'th';
   context?: Array<{ text: string; language: 'en' | 'th' }>;
+  testProvider?: 'claude' | 'gemini' | 'hermes';
+  bypassExplicitCheck?: boolean;
 }
 
 export interface TranslationResponse {
   success: boolean;
   translatedText: string;
   usedFallback: boolean;
-  provider: 'openrouter' | 'gemini' | 'hermes';
+  provider: 'claude' | 'gemini' | 'hermes';
   usedExplicit: boolean;
   error?: string;
 }
@@ -71,8 +73,7 @@ export interface LineEvent {
 export interface BotConfig {
   channelAccessToken: string;
   channelSecret: string;
-  geminiApiKey: string;
-  openrouterApiKey: string;
+    openrouterApiKey: string;
   openrouterSiteUrl?: string;
   openrouterSiteTitle?: string;
   maxMemoryMessages: number;
