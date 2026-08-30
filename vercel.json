@@ -7,8 +7,12 @@
       "config": {
         "includeFiles": [
           "data/*",
-          "src/core/**",
-          "src/translation/**"
+          "src/core/config.ts",
+          "src/core/config.js",
+          "src/core/utils.ts",
+          "src/core/utils.js",
+          "src/core/types.ts",
+          "src/core/types.js"
         ]
       }
     }

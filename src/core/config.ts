@@ -1,4 +1,4 @@
-import { BotConfig } from './types';
+import { BotConfig } from './types.js';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env file

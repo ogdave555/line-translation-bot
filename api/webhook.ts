@@ -6,11 +6,11 @@ import {
   MODELS,
   GEN_PARAMS,
   OPENROUTER_API_URL,
-} from '../src/core/config';
+} from '../src/core/config.js';
 import {
   hasThaiText,
   cleanTextForTranslation,
-} from '../src/core/utils';
+} from '../src/core/utils.js';
 
 interface LineEvent {
   replyToken?: string;
