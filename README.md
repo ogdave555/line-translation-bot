@@ -17,10 +17,10 @@ Features
 
 The bot is configured for two specific users:
 
-| Speaker | Age | Origin | Native | Learning | Level |
-|---------|-----|--------|--------|----------|-------|
-| English Speaker | 37 | England | English | Thai | Beginner |
-| Thai Speaker | 19 | Thailand | Thai | English | None |
+| Speaker         | Age | Origin   | Native  | Learning | Level    |
+| --------------- | --- | -------- | ------- | -------- | -------- |
+| English Speaker | 37  | England  | English | Thai     | Beginner |
+| Thai Speaker    | 19  | Thailand | Thai    | English  | None     |
 
 ## Prerequisites
 
@@ -68,7 +68,7 @@ OPENROUTER_SITE_TITLE=LINE Translation Bot
 1. Deploy to Vercel first (see Deployment section below)
 2. In LINE Developers Console, set Webhook URL:
    - URL: `https://your-vercel-app.vercel.app/api/webhook`
-   - Enable "Use webhook" 
+   - Enable "Use webhook"
    - Enable "Reply to messages"
 
 ### 5. Add Bot to Your Group
@@ -97,10 +97,10 @@ vercel
 
 ## API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/webhook` | POST | LINE webhook endpoint |
-| `/api/webhook` | GET | Health check |
+| Endpoint       | Method | Description           |
+| -------------- | ------ | --------------------- |
+| `/api/webhook` | POST   | LINE webhook endpoint |
+| `/api/webhook` | GET    | Health check          |
 
 ## How It Works
 
@@ -109,9 +109,40 @@ vercel
 3. Bot detects message type (text vs image, etc.)
 4. Bot checks for explicit content (English/Thai profanity, sexual content)
 5. Hermes 3 (405B) translates the message via OpenRouter — handles ALL content (clean + explicit)
-6. If Hermes fails → falls back to Claude Sonnet 5 (clean content only)
-7. If Claude also fails → falls back to Gemini 3.7 Flash (clean content only)
-8. Translation is sent as a reply
+6. Output is checked against `WRONG_LANG_OUTPUT_REGEX` (Cyrillic / CJK). If the model
+   leaked into the wrong script, the response is rejected and we fall through to the next provider.
+7. If Hermes fails → falls back to Claude Sonnet 5 (clean content only)
+8. If Claude also fails → falls back to Gemini 3.7 Flash (clean content only)
+9. Translation is sent as a reply
+
+## Language Parameters
+
+Translation prompts use **BCP-47 tags** at the prompt boundary (`en-GB`, `th-TH`) and
+internal short codes (`en`, `th`) elsewhere. The prompt builder
+(`buildSystemPrompt` in [`src/core/config.ts`](src/core/config.ts:1)) handles the mapping.
+
+| Layer                     | Code                       | Notes                                                            |
+| ------------------------- | -------------------------- | ---------------------------------------------------------------- |
+| Internal TypeScript types | `en` / `th`                | short, used in `TranslationRequest`, memory, etc.                |
+| Prompt boundary           | `en-GB` / `th-TH`          | emitted inside system prompts so models see explicit region tags |
+| Output language lock      | `British English` / `Thai` | target name in the prompt's `OUTPUT LANGUAGE LOCK` rule          |
+
+### Per-provider temperature
+
+| Provider                    | Temperature | Rationale                                         |
+| --------------------------- | ----------- | ------------------------------------------------- |
+| Hermes 3 (primary)          | `0.3`       | slightly higher; less "rushing" into wrong tokens |
+| Claude Sonnet 5 (fallback)  | `0.2`       | deterministic for clean content                   |
+| Gemini 3.7 Flash (fallback) | `0.2`       | deterministic for clean content                   |
+
+### Prompt rules
+
+- **OUTPUT LANGUAGE LOCK**: forbids Russian, Chinese, Japanese, Korean output.
+- **SPEAKER PERSONA**: en-GB source = older male (37yo); th-TH source = younger female (19yo).
+- **PRESERVE THAI INTERNET SLANG**: `'555'`, `'ฮ่า'`, `'อิ'`, etc. are kept verbatim in th-TH → en-GB output.
+- **PRESERVE EMOJIS**: emojis pass through unchanged.
+- **NO HALLUCINATIONS**: do not add profanity, vulgarity, or flair not in the source.
+- **THAI QUESTIONS**: when translating en-GB → th-TH, replace `?` with the natural Thai particle (`ไหม`, `เหรอ`).
 
 ## Message Types Handled
 
@@ -121,6 +152,7 @@ vercel
 ## Translation Features
 
 ### Profanity Handling
+
 - Profanity words are translated normally if they exist in target language
 - If not, equivalent vulgar terms are used
 - No filtering or censorship
@@ -131,18 +163,20 @@ vercel
 
 **Provider Cascade:**
 
-| Tier | Provider | Model | Handles Explicit |
-|------|----------|-------|-----------------|
-| 1 (primary) | Hermes 3 | `nousresearch/hermes-3-llama-3.1-405b` | ✅ Yes |
-| 2 (fallback) | Claude Sonnet 5 | `anthropic/claude-sonnet-5` | ❌ No (blocked) |
-| 3 (fallback) | Gemini 3.7 Flash | `google/gemini-3.7-flash` | ❌ No (blocked) |
+| Tier         | Provider         | Model                                  | Handles Explicit |
+| ------------ | ---------------- | -------------------------------------- | ---------------- |
+| 1 (primary)  | Hermes 3         | `nousresearch/hermes-3-llama-3.1-405b` | ✅ Yes           |
+| 2 (fallback) | Claude Sonnet 5  | `anthropic/claude-sonnet-5`            | ❌ No (blocked)  |
+| 3 (fallback) | Gemini 3.7 Flash | `google/gemini-3.7-flash`              | ❌ No (blocked)  |
 
 ### Context Awareness
+
 - Stores last 20 messages per conversation
 - Provides context for more accurate translations
 - Context includes who said what and in which language
 
 ### Natural Language
+
 - Translations sound conversational
 - Sentence restructuring for natural flow
 - Not literal word-for-word translation
@@ -200,15 +234,18 @@ LINE-BOT/
 ## Troubleshooting
 
 ### "Invalid signature" error
+
 - Check your CHANNEL_SECRET in .env
 - Ensure webhook URL matches exactly
 
 ### Translation failing
+
 - Check that OPENROUTER_API_KEY is set (this key provides access to all three models:
   Hermes 3, Claude Sonnet 5, and Gemini 3.7 Flash)
 - Run `npm run test:providers` to verify all provider endpoints are accessible
 
 ### Messages not translating
+
 - Bot must be in the group
 - Messages must be text (not images/files)
 - Check Vercel logs in dashboard

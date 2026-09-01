@@ -4,9 +4,26 @@
  *   1. Hermes 3 (405B) — primary provider for ALL content (clean + explicit)
  *   2. Claude Sonnet 5 — fallback for clean content only (or when bypassExplicitCheck is set)
  *   3. Gemini 2.5 Pro   — second fallback for clean content
+ *
+ * Language parameters:
+ *   - Internal language codes: 'en' | 'th'
+ *   - Prompt-boundary codes (BCP-47): 'en-GB' | 'th-TH' (set by buildSystemPrompt)
+ *   - Per-provider temperature: 0.3 for Hermes, 0.2 for Claude/Gemini
+ *   - WRONG_LANG_OUTPUT_REGEX: rejects Cyrillic/CJK leakage in th-TH/en-GB output,
+ *     falling through to the next provider instead of returning bad text.
  */
 
-import { getSystemPrompt, getGeminiSystemPrompt, getHermesSystemPrompt, getConfig, GEN_PARAMS, containsExplicitContent, MODELS, englishExplicit, thaiExplicit } from '../core/config';
+import {
+  getSystemPromptForProvider,
+  getConfig,
+  GEN_PARAMS,
+  getTemperatureForProvider,
+  containsExplicitContent,
+  MODELS,
+  WRONG_LANG_OUTPUT_REGEX,
+  englishExplicit,
+  thaiExplicit,
+} from '../core/config';
 import { TranslationResponse, TranslationRequest } from '../core/types';
 import { getRecentMessages, addToMemory } from './memory';
 
@@ -22,12 +39,15 @@ interface OpenRouterApiResponse {
 /**
  * Call OpenRouter API for translation (primary + explicit content provider).
  * Model is configurable: Claude Sonnet 5 (fallback) or Hermes 3 (primary/explicit).
+ * The temperature is per-provider (see TEMPERATURE in config.ts) and falls
+ * back to GEN_PARAMS.temperature when a provider is not listed.
  */
 async function callOpenRouter(
   text: string,
   systemPrompt: string,
   apiKey: string,
   model: string,
+  provider: string,
   siteUrl?: string,
   siteTitle?: string
 ): Promise<string> {
@@ -42,7 +62,7 @@ async function callOpenRouter(
     body: JSON.stringify({
       model,
       messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
-      temperature: GEN_PARAMS.temperature,
+      temperature: getTemperatureForProvider(provider),
       max_tokens: GEN_PARAMS.maxTokens,
       top_p: GEN_PARAMS.topP,
       moderation: 'false'
@@ -64,12 +84,48 @@ function detectLanguage(text: string): 'en' | 'th' {
 }
 
 /**
+ * Run a single provider's translation request and apply the WRONG_LANG_OUTPUT_REGEX
+ * safety guard. If the model returns Cyrillic / CJK characters (a sign it
+ * leaked into the wrong script), the result is rejected and we fall through
+ * to the next provider instead of returning bad output.
+ */
+async function runProvider(
+  provider: 'hermes' | 'claude' | 'gemini',
+  text: string,
+  sourceLanguage: 'en' | 'th',
+  targetLanguage: 'en' | 'th',
+  apiKey: string,
+  siteUrl?: string,
+  siteTitle?: string
+): Promise<string> {
+  const model =
+    provider === 'hermes' ? MODELS.PRIMARY
+    : provider === 'claude' ? MODELS.CLAUDE
+    : MODELS.GEMINI;
+
+  const prompt = getSystemPromptForProvider(provider, sourceLanguage, targetLanguage);
+  const raw = await callOpenRouter(
+    text, prompt, apiKey, model, provider, siteUrl, siteTitle
+  );
+
+  if (!raw) throw new Error(`${provider} returned empty response`);
+  if (WRONG_LANG_OUTPUT_REGEX.test(raw)) {
+    throw new Error(`${provider} output contained wrong-script characters (Cyrillic/CJK)`);
+  }
+  return raw;
+}
+
+/**
  * Main translation function with provider cascade and fallback support.
  *
  * Routing logic:
  * 1. Hermes 3 (405B) via OpenRouter — primary provider for ALL content (clean + explicit)
  * 2. Fallback → Claude Sonnet 5 (OpenRouter, clean content only unless bypassExplicitCheck)
  * 3. Second fallback → Gemini 2.5 Pro (OpenRouter, clean content only unless bypassExplicitCheck)
+ *
+ * When a provider returns output containing Cyrillic / CJK (i.e. wrong script),
+ * the WRONG_LANG_OUTPUT_REGEX guard rejects it and the cascade continues to
+ * the next provider.
  */
 export async function translate(request: TranslationRequest): Promise<TranslationResponse> {
   const config = getConfig();
@@ -78,27 +134,10 @@ export async function translate(request: TranslationRequest): Promise<Translatio
 
   // If testProvider specified, route directly to that provider
   if (testProvider) {
-    let model: string;
-    let prompt: string;
-
-    switch (testProvider) {
-      case 'claude':
-        model = MODELS.CLAUDE;
-        prompt = getSystemPrompt(sourceLanguage === 'en' ? 'english' : 'thai', targetLanguage, context);
-        break;
-      case 'gemini':
-        model = MODELS.GEMINI;
-        prompt = getGeminiSystemPrompt(targetLanguage);
-        break;
-      default:
-        model = MODELS.PRIMARY;
-        prompt = getHermesSystemPrompt(sourceLanguage, targetLanguage);
-    }
-
     try {
-      const translatedText = await callOpenRouter(
-        text, prompt, config.openrouterApiKey,
-        model, config.openrouterSiteUrl, config.openrouterSiteTitle
+      const translatedText = await runProvider(
+        testProvider, text, sourceLanguage, targetLanguage,
+        config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
       );
       return { success: true, translatedText, usedFallback: false, provider: testProvider, usedExplicit: isExplicit };
     } catch (error: any) {
@@ -107,12 +146,10 @@ export async function translate(request: TranslationRequest): Promise<Translatio
   }
 
   // Primary: Hermes 3 405B for ALL content (clean + explicit)
-  const hermesPrompt = getHermesSystemPrompt(sourceLanguage, targetLanguage);
-
   try {
-    const translatedText = await callOpenRouter(
-      text, hermesPrompt, config.openrouterApiKey,
-      MODELS.PRIMARY, config.openrouterSiteUrl, config.openrouterSiteTitle
+    const translatedText = await runProvider(
+      'hermes', text, sourceLanguage, targetLanguage,
+      config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
     );
     return { success: true, translatedText, usedFallback: false, provider: 'hermes', usedExplicit: isExplicit };
   } catch (error: any) {
@@ -126,28 +163,25 @@ export async function translate(request: TranslationRequest): Promise<Translatio
   }
 
   // Fallback: Claude Sonnet 5 via OpenRouter
-  const systemPrompt = getSystemPrompt(sourceLanguage === 'en' ? 'english' : 'thai', targetLanguage, context);
-
   try {
-    const translatedText = await callOpenRouter(
-      text, systemPrompt, config.openrouterApiKey,
-      MODELS.CLAUDE, config.openrouterSiteUrl, config.openrouterSiteTitle
+    const translatedText = await runProvider(
+      'claude', text, sourceLanguage, targetLanguage,
+      config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
     );
     return { success: true, translatedText, usedFallback: true, provider: 'claude', usedExplicit: false };
   } catch (error: any) {
     console.error('Claude fallback failed:', error.message);
+  }
 
-    // Second fallback: Gemini 3.7 Flash via OpenRouter
-    const backupPrompt = getGeminiSystemPrompt(targetLanguage);
-    try {
-      const translatedText = await callOpenRouter(
-        text, backupPrompt, config.openrouterApiKey,
-        MODELS.GEMINI, config.openrouterSiteUrl, config.openrouterSiteTitle
-      );
-      return { success: true, translatedText, usedFallback: true, provider: 'gemini', usedExplicit: false };
-    } catch (geminiError: any) {
-      return { success: false, translatedText: '', usedFallback: false, provider: 'gemini', usedExplicit: false, error: geminiError.message };
-    }
+  // Second fallback: Gemini 3.7 Flash via OpenRouter
+  try {
+    const translatedText = await runProvider(
+      'gemini', text, sourceLanguage, targetLanguage,
+      config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
+    );
+    return { success: true, translatedText, usedFallback: true, provider: 'gemini', usedExplicit: false };
+  } catch (geminiError: any) {
+    return { success: false, translatedText: '', usedFallback: false, provider: 'gemini', usedExplicit: false, error: geminiError.message };
   }
 }
 
@@ -231,14 +265,29 @@ export async function translateWithProfanityPipeline(
     return maskedResult;
   }
 
+  // Re-check the masked translation for wrong-script leakage before
+  // we substitute profanity back in (the [PROFANITY:N] markers
+  // themselves are ASCII, so the guard is meaningful here).
+  if (WRONG_LANG_OUTPUT_REGEX.test(maskedResult.translatedText)) {
+    return {
+      success: false,
+      translatedText: '',
+      usedFallback: maskedResult.usedFallback,
+      provider: maskedResult.provider,
+      usedExplicit: true,
+      error: 'Masked translation contained wrong-script characters',
+    };
+  }
+
   // Translate each profanity token individually through Hermes
-  const hermesPrompt = getHermesSystemPrompt(sourceLanguage, targetLanguage);
   const config = getConfig();
+  const hermesPrompt = getSystemPromptForProvider('hermes', sourceLanguage, targetLanguage);
   const translatedToken = await callOpenRouter(
     profanityTokens.join(' '),
     hermesPrompt,
     config.openrouterApiKey,
     MODELS.PRIMARY,
+    'hermes',
     config.openrouterSiteUrl,
     config.openrouterSiteTitle
   );
