@@ -23,12 +23,12 @@ import {
   WRONG_LANG_OUTPUT_REGEX,
   englishExplicit,
   thaiExplicit,
-} from '../core/config';
-import { TranslationResponse, TranslationRequest } from '../core/types';
-import { getRecentMessages, addToMemory } from './memory';
+} from "../core/config";
+import { TranslationResponse, TranslationRequest } from "../core/types";
+import { getRecentMessages, addToMemory } from "./memory";
 
 // OpenRouter API endpoint
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // Type definitions for API responses
 interface OpenRouterApiResponse {
@@ -49,38 +49,43 @@ async function callOpenRouter(
   model: string,
   provider: string,
   siteUrl?: string,
-  siteTitle?: string
+  siteTitle?: string,
 ): Promise<string> {
   const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      ...(siteUrl && { 'HTTP-Referer': siteUrl }),
-      ...(siteTitle && { 'X-OpenRouter-Title': siteTitle })
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      ...(siteUrl && { "HTTP-Referer": siteUrl }),
+      ...(siteTitle && { "X-OpenRouter-Title": siteTitle }),
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: text },
+      ],
       temperature: getTemperatureForProvider(provider),
       max_tokens: GEN_PARAMS.maxTokens,
       top_p: GEN_PARAMS.topP,
-      moderation: 'false'
-    })
+      moderation: "false",
+    }),
   });
 
   if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.status} - ${await response.text()}`);
+    throw new Error(
+      `OpenRouter API error: ${response.status} - ${await response.text()}`,
+    );
   }
 
   const data = (await response.json()) as OpenRouterApiResponse;
   if (data.error) throw new Error(`OpenRouter error: ${data.error.message}`);
-  return data.choices?.[0]?.message?.content?.trim() || '';
+  return data.choices?.[0]?.message?.content?.trim() || "";
 }
 
 /** Detect language of text */
-function detectLanguage(text: string): 'en' | 'th' {
-  return /[\u0E00-\u0E7F]/.test(text) ? 'th' : 'en';
+function detectLanguage(text: string): "en" | "th" {
+  return /[\u0E00-\u0E7F]/.test(text) ? "th" : "en";
 }
 
 /**
@@ -90,27 +95,41 @@ function detectLanguage(text: string): 'en' | 'th' {
  * to the next provider instead of returning bad output.
  */
 async function runProvider(
-  provider: 'hermes' | 'claude' | 'gemini',
+  provider: "hermes" | "claude" | "gemini",
   text: string,
-  sourceLanguage: 'en' | 'th',
-  targetLanguage: 'en' | 'th',
+  sourceLanguage: "en" | "th",
+  targetLanguage: "en" | "th",
   apiKey: string,
   siteUrl?: string,
-  siteTitle?: string
+  siteTitle?: string,
 ): Promise<string> {
   const model =
-    provider === 'hermes' ? MODELS.PRIMARY
-    : provider === 'claude' ? MODELS.CLAUDE
-    : MODELS.GEMINI;
+    provider === "hermes"
+      ? MODELS.PRIMARY
+      : provider === "claude"
+        ? MODELS.CLAUDE
+        : MODELS.GEMINI;
 
-  const prompt = getSystemPromptForProvider(provider, sourceLanguage, targetLanguage);
+  const prompt = getSystemPromptForProvider(
+    provider,
+    sourceLanguage,
+    targetLanguage,
+  );
   const raw = await callOpenRouter(
-    text, prompt, apiKey, model, provider, siteUrl, siteTitle
+    text,
+    prompt,
+    apiKey,
+    model,
+    provider,
+    siteUrl,
+    siteTitle,
   );
 
   if (!raw) throw new Error(`${provider} returned empty response`);
   if (WRONG_LANG_OUTPUT_REGEX.test(raw)) {
-    throw new Error(`${provider} output contained wrong-script characters (Cyrillic/CJK)`);
+    throw new Error(
+      `${provider} output contained wrong-script characters (Cyrillic/CJK)`,
+    );
   }
   return raw;
 }
@@ -127,61 +146,136 @@ async function runProvider(
  * the WRONG_LANG_OUTPUT_REGEX guard rejects it and the cascade continues to
  * the next provider.
  */
-export async function translate(request: TranslationRequest): Promise<TranslationResponse> {
+export async function translate(
+  request: TranslationRequest,
+): Promise<TranslationResponse> {
   const config = getConfig();
-  const { text, sourceLanguage, targetLanguage, context, testProvider, bypassExplicitCheck } = request;
+  const {
+    text,
+    sourceLanguage,
+    targetLanguage,
+    context,
+    testProvider,
+    bypassExplicitCheck,
+  } = request;
   const isExplicit = containsExplicitContent(text);
 
   // If testProvider specified, route directly to that provider
   if (testProvider) {
     try {
       const translatedText = await runProvider(
-        testProvider, text, sourceLanguage, targetLanguage,
-        config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
+        testProvider,
+        text,
+        sourceLanguage,
+        targetLanguage,
+        config.openrouterApiKey,
+        config.openrouterSiteUrl,
+        config.openrouterSiteTitle,
       );
-      return { success: true, translatedText, usedFallback: false, provider: testProvider, usedExplicit: isExplicit };
+      return {
+        success: true,
+        translatedText,
+        usedFallback: false,
+        provider: testProvider,
+        usedExplicit: isExplicit,
+      };
     } catch (error: any) {
-      return { success: false, translatedText: '', usedFallback: false, provider: testProvider, usedExplicit: isExplicit, error: error.message };
+      return {
+        success: false,
+        translatedText: "",
+        usedFallback: false,
+        provider: testProvider,
+        usedExplicit: isExplicit,
+        error: error.message,
+      };
     }
   }
 
   // Primary: Hermes 3 405B for ALL content (clean + explicit)
   try {
     const translatedText = await runProvider(
-      'hermes', text, sourceLanguage, targetLanguage,
-      config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
+      "hermes",
+      text,
+      sourceLanguage,
+      targetLanguage,
+      config.openrouterApiKey,
+      config.openrouterSiteUrl,
+      config.openrouterSiteTitle,
     );
-    return { success: true, translatedText, usedFallback: false, provider: 'hermes', usedExplicit: isExplicit };
+    return {
+      success: true,
+      translatedText,
+      usedFallback: false,
+      provider: "hermes",
+      usedExplicit: isExplicit,
+    };
   } catch (error: any) {
-    console.error('Primary translation (Hermes) failed:', error.message);
+    console.error("Primary translation (Hermes) failed:", error.message);
     // Fall through to fallback providers
   }
 
   // Claude and Gemini only handle clean content (unless bypassExplicitCheck is set)
   if (isExplicit && !bypassExplicitCheck) {
-    return { success: false, translatedText: '', usedFallback: false, provider: 'hermes', usedExplicit: true, error: 'Hermes failed and explicit content cannot be routed to Claude/Gemini' };
+    return {
+      success: false,
+      translatedText: "",
+      usedFallback: false,
+      provider: "hermes",
+      usedExplicit: true,
+      error:
+        "Hermes failed and explicit content cannot be routed to Claude/Gemini",
+    };
   }
 
   // Fallback: Claude Sonnet 5 via OpenRouter
   try {
     const translatedText = await runProvider(
-      'claude', text, sourceLanguage, targetLanguage,
-      config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
+      "claude",
+      text,
+      sourceLanguage,
+      targetLanguage,
+      config.openrouterApiKey,
+      config.openrouterSiteUrl,
+      config.openrouterSiteTitle,
     );
-    return { success: true, translatedText, usedFallback: true, provider: 'claude', usedExplicit: false };
+    return {
+      success: true,
+      translatedText,
+      usedFallback: true,
+      provider: "claude",
+      usedExplicit: false,
+    };
   } catch (error: any) {
-    console.error('Claude fallback failed:', error.message);
+    console.error("Claude fallback failed:", error.message);
   }
 
   // Second fallback: Gemini 3.7 Flash via OpenRouter
   try {
     const translatedText = await runProvider(
-      'gemini', text, sourceLanguage, targetLanguage,
-      config.openrouterApiKey, config.openrouterSiteUrl, config.openrouterSiteTitle
+      "gemini",
+      text,
+      sourceLanguage,
+      targetLanguage,
+      config.openrouterApiKey,
+      config.openrouterSiteUrl,
+      config.openrouterSiteTitle,
     );
-    return { success: true, translatedText, usedFallback: true, provider: 'gemini', usedExplicit: false };
+    return {
+      success: true,
+      translatedText,
+      usedFallback: true,
+      provider: "gemini",
+      usedExplicit: false,
+    };
   } catch (geminiError: any) {
-    return { success: false, translatedText: '', usedFallback: false, provider: 'gemini', usedExplicit: false, error: geminiError.message };
+    return {
+      success: false,
+      translatedText: "",
+      usedFallback: false,
+      provider: "gemini",
+      usedExplicit: false,
+      error: geminiError.message,
+    };
   }
 }
 
@@ -203,7 +297,10 @@ export async function translate(request: TranslationRequest): Promise<Translatio
  * Extract explicit content tokens from text and return masked text + token list.
  * English tokens are space-delimited; Thai tokens are matched via regex.
  */
-function maskProfanity(text: string): { maskedText: string; profanityTokens: string[] } {
+function maskProfanity(text: string): {
+  maskedText: string;
+  profanityTokens: string[];
+} {
   const tokens: string[] = [];
 
   // English: token-by-token masking
@@ -216,11 +313,11 @@ function maskProfanity(text: string): { maskedText: string; profanityTokens: str
     return word;
   });
 
-  let maskedText = maskedWords.join('');
+  let maskedText = maskedWords.join("");
 
   // Thai: regex-replace explicit terms with markers
   let thaiMatch: RegExpExecArray | null;
-  const thaiRegex = new RegExp(thaiExplicit.source, 'g');
+  const thaiRegex = new RegExp(thaiExplicit.source, "g");
   while ((thaiMatch = thaiRegex.exec(maskedText)) !== null) {
     const token = thaiMatch[0];
     tokens.push(token);
@@ -240,7 +337,7 @@ function maskProfanity(text: string): { maskedText: string; profanityTokens: str
  * individually through Hermes and substituted back.
  */
 export async function translateWithProfanityPipeline(
-  request: Omit<TranslationRequest, 'testProvider'>
+  request: Omit<TranslationRequest, "testProvider">,
 ): Promise<TranslationResponse> {
   const { text, sourceLanguage, targetLanguage, context } = request;
   const isExplicit = containsExplicitContent(text);
@@ -267,29 +364,52 @@ export async function translateWithProfanityPipeline(
 
   // Re-check the masked translation for wrong-script leakage before
   // we substitute profanity back in (the [PROFANITY:N] markers
+  // Re-check the masked translation for wrong-script leakage before
+  // we substitute profanity back in (the [PROFANITY:N] markers
   // themselves are ASCII, so the guard is meaningful here).
   if (WRONG_LANG_OUTPUT_REGEX.test(maskedResult.translatedText)) {
     return {
       success: false,
-      translatedText: '',
+      translatedText: "",
       usedFallback: maskedResult.usedFallback,
       provider: maskedResult.provider,
       usedExplicit: true,
-      error: 'Masked translation contained wrong-script characters',
+      error: "Masked translation contained wrong-script characters",
     };
+  }
+
+  // Defensive: if the cascade provider translated the [PROFANITY:N] markers
+  // into the target language (e.g. Thai "คำสบถ:1"), substitution would leave
+  // the original Thai text in the output. Return the masked translation as-is
+  // rather than producing a corrupted result.
+  for (let i = 0; i < profanityTokens.length; i++) {
+    const marker = `[PROFANITY:${i + 1}]`;
+    if (!maskedResult.translatedText.includes(marker)) {
+      return {
+        success: true,
+        translatedText: maskedResult.translatedText,
+        usedFallback: maskedResult.usedFallback,
+        provider: maskedResult.provider,
+        usedExplicit: true,
+      };
+    }
   }
 
   // Translate each profanity token individually through Hermes
   const config = getConfig();
-  const hermesPrompt = getSystemPromptForProvider('hermes', sourceLanguage, targetLanguage);
+  const hermesPrompt = getSystemPromptForProvider(
+    "hermes",
+    sourceLanguage,
+    targetLanguage,
+  );
   const translatedToken = await callOpenRouter(
-    profanityTokens.join(' '),
+    profanityTokens.join(" "),
     hermesPrompt,
     config.openrouterApiKey,
     MODELS.PRIMARY,
-    'hermes',
+    "hermes",
     config.openrouterSiteUrl,
-    config.openrouterSiteTitle
+    config.openrouterSiteTitle,
   );
 
   // Split the Hermes result into individual token translations
@@ -307,7 +427,7 @@ export async function translateWithProfanityPipeline(
     success: true,
     translatedText: finalText,
     usedFallback: maskedResult.usedFallback,
-    provider: 'hermes',
+    provider: "hermes",
     usedExplicit: true,
   };
 }
@@ -316,13 +436,22 @@ export async function translateWithProfanityPipeline(
  * Translate with conversation memory + profanity pipeline.
  */
 export async function translateWithProfanityPipelineAndMemory(
-  groupId: string, userId: string, text: string,
-  options?: { bypassExplicitCheck?: boolean }
-): Promise<{ success: boolean; translatedText?: string; error?: string; usedFallback?: boolean; provider?: 'claude' | 'gemini' | 'hermes'; usedExplicit?: boolean }> {
+  groupId: string,
+  userId: string,
+  text: string,
+  options?: { bypassExplicitCheck?: boolean },
+): Promise<{
+  success: boolean;
+  translatedText?: string;
+  error?: string;
+  usedFallback?: boolean;
+  provider?: "claude" | "gemini" | "hermes";
+  usedExplicit?: boolean;
+}> {
   addToMemory(groupId, userId, text);
   const context = getRecentMessages(groupId, 10);
   const sourceLanguage = detectLanguage(text);
-  const targetLanguage = sourceLanguage === 'en' ? 'th' : 'en';
+  const targetLanguage = sourceLanguage === "en" ? "th" : "en";
 
   const result = await translateWithProfanityPipeline({
     text,
@@ -332,7 +461,13 @@ export async function translateWithProfanityPipelineAndMemory(
   });
 
   return result.success
-    ? { success: true, translatedText: result.translatedText, usedFallback: result.usedFallback, provider: result.provider, usedExplicit: result.usedExplicit }
+    ? {
+        success: true,
+        translatedText: result.translatedText,
+        usedFallback: result.usedFallback,
+        provider: result.provider,
+        usedExplicit: result.usedExplicit,
+      }
     : { success: false, error: result.error };
 }
 
@@ -340,13 +475,25 @@ export async function translateWithProfanityPipelineAndMemory(
  * Translate with conversation memory
  */
 export async function translateWithMemory(
-  groupId: string, userId: string, text: string,
-  options?: { testProvider?: 'claude' | 'gemini' | 'hermes'; bypassExplicitCheck?: boolean }
-): Promise<{ success: boolean; translatedText?: string; error?: string; usedFallback?: boolean; provider?: 'claude' | 'gemini' | 'hermes'; usedExplicit?: boolean }> {
+  groupId: string,
+  userId: string,
+  text: string,
+  options?: {
+    testProvider?: "claude" | "gemini" | "hermes";
+    bypassExplicitCheck?: boolean;
+  },
+): Promise<{
+  success: boolean;
+  translatedText?: string;
+  error?: string;
+  usedFallback?: boolean;
+  provider?: "claude" | "gemini" | "hermes";
+  usedExplicit?: boolean;
+}> {
   addToMemory(groupId, userId, text);
   const context = getRecentMessages(groupId, 10);
   const sourceLanguage = detectLanguage(text);
-  const targetLanguage = sourceLanguage === 'en' ? 'th' : 'en';
+  const targetLanguage = sourceLanguage === "en" ? "th" : "en";
 
   const result = await translate({
     text,
@@ -358,6 +505,12 @@ export async function translateWithMemory(
   });
 
   return result.success
-    ? { success: true, translatedText: result.translatedText, usedFallback: result.usedFallback, provider: result.provider, usedExplicit: result.usedExplicit }
+    ? {
+        success: true,
+        translatedText: result.translatedText,
+        usedFallback: result.usedFallback,
+        provider: result.provider,
+        usedExplicit: result.usedExplicit,
+      }
     : { success: false, error: result.error };
 }

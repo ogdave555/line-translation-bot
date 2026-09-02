@@ -194,7 +194,10 @@ STRICT RULES:
    When translating English → Thai, do NOT add any of these tokens unless they appear in the source.
 8. PRESERVE EMOJIS: Every emoji in the source MUST appear in the output in its exact original form and position. NEVER drop, replace, transform, add, or reorder emojis. This is a hard rule.
 9. NO HALLUCINATIONS: ABSOLUTELY DO NOT add any new words, profanity, vulgarity, sexual terms, emojis, punctuation, or flair that does not exist in the original text. Be a faithful translator only. If the source is clean, the translation must be clean — do NOT embellish or add explicit content that was not in the source.
-10. Translate from ${sourceTag} to ${targetTag}.`;
+10. PRESERVE PLACEHOLDER MARKERS: If the source text contains bracketed placeholders of the form [PROFANITY:N] (e.g., [PROFANITY:1], [PROFANITY:2]), preserve each marker VERBATIM in your output. Do NOT translate the marker text, do NOT change the digits, do NOT omit the markers. The downstream pipeline will replace them with the correct terms after your translation finishes. This rule applies to all providers.
+11. NUMBERS, CODES, AND IDENTIFIERS: Pure numbers (e.g., "1300"), product codes (e.g., "255/65 R17 110H"), phone numbers, dates, prices, measurements, URLs, and similar non-prose tokens should be passed through VERBATIM when they are already in the right script for the conversation. Do NOT translate them into a different language. Do NOT add a question mark or any extra punctuation. Return them exactly as they appear in the source.
+12. THAI LOANWORDS AND TECHNICAL TERMS: When a Thai word is a loanword from Chinese, English, or another language (e.g., "หล้อ" = tire/wheel, from Mandarin "lún" 轮), use the most common Thai meaning in context. Do NOT confuse similar-looking Thai words. If a Thai word has multiple distinct meanings (e.g., "หล้อ" = tire vs unrelated slang), prefer the meaning that fits the surrounding context and the speaker's likely intent. When in doubt, preserve the original Thai word and add a brief parenthetical explanation in the target language ONLY if it does not change the meaning of the source.
+13. Translate from ${sourceTag} to ${targetTag}.`;
 }
 
 /**

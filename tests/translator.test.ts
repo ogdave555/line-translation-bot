@@ -97,6 +97,46 @@ describe("buildSystemPrompt (new language parameters)", () => {
     assert.ok(prompt.includes("'อิ'"));
   });
 
+  test("includes PRESERVE PLACEHOLDER MARKERS rule (fixes profanity marker leak)", () => {
+    const prompt = buildSystemPrompt("en", "th");
+    assert.ok(prompt.includes("PRESERVE PLACEHOLDER MARKERS"));
+    assert.ok(
+      prompt.includes("[PROFANITY:N]"),
+      "Prompt should explicitly mention the [PROFANITY:N] marker format",
+    );
+    assert.ok(
+      prompt.includes("preserve each marker VERBATIM"),
+      "Prompt should tell the model to preserve markers verbatim",
+    );
+    assert.ok(
+      prompt.includes("applies to all providers"),
+      "Marker-preservation rule must apply to Claude/Gemini too, not just Hermes",
+    );
+  });
+
+  test("includes NUMBERS, CODES, AND IDENTIFIERS rule (fixes untranslatable-token error)", () => {
+    const prompt = buildSystemPrompt("en", "th");
+    assert.ok(prompt.includes("NUMBERS, CODES, AND IDENTIFIERS"));
+    assert.ok(prompt.includes("255/65 R17 110H"));
+    assert.ok(
+      prompt.includes("passed through VERBATIM"),
+      "Prompt should tell the model to pass untranslatable tokens through verbatim",
+    );
+  });
+
+  test("includes THAI LOANWORDS rule (fixes หล้อ = tire mistranslation)", () => {
+    const prompt = buildSystemPrompt("en", "th");
+    assert.ok(prompt.includes("THAI LOANWORDS"));
+    assert.ok(
+      prompt.includes("หล้อ"),
+      "Prompt should call out หล้อ (tire) as a known loanword",
+    );
+    assert.ok(
+      prompt.includes("lún"),
+      "Prompt should give the Chinese-origin clue 'lún' (轮)",
+    );
+  });
+
   test("includes strict emoji preservation rule", () => {
     const prompt = buildSystemPrompt("en", "th");
     assert.ok(prompt.includes("PRESERVE EMOJIS"));

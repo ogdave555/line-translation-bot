@@ -141,6 +141,11 @@ function maskProfanity(text: string): {
 
 /**
  * Translate using profanity pipeline: mask → translate → unmask via Hermes.
+ *
+ * Numbers, codes, and other untranslatable tokens (e.g. "1300", "255/65 R17
+ * 110H") are returned VERBATIM by the model — we treat that as a successful
+ * translation, not a failure, because the model legitimately has nothing to
+ * translate.
  */
 async function translateWithPipeline(
   text: string,
@@ -150,8 +155,8 @@ async function translateWithPipeline(
   const isExplicit = containsExplicitContent(text);
   if (!isExplicit) {
     const result = await translate(text, targetLang, openrouterKey);
-    if (result === text) return getErrorMessage(targetLang);
-    return result;
+    if (!result.ok) return getErrorMessage(targetLang);
+    return result.text;
   }
 
   const { maskedText, profanityTokens } = maskProfanity(text);
@@ -159,7 +164,18 @@ async function translateWithPipeline(
   // Translate masked (clean) text through the cascade
   const maskedResult = await translate(maskedText, targetLang, openrouterKey);
 
-  if (maskedResult === maskedText) return getErrorMessage(targetLang); // translate failed
+  if (!maskedResult.ok) return getErrorMessage(targetLang); // cascade failed
+
+  // If the cascade succeeded but didn't preserve our markers (e.g. the
+  // fallback provider translated them), return the masked translation
+  // verbatim rather than showing the user a raw error.
+  let finalText = maskedResult.text;
+  for (let i = 0; i < profanityTokens.length; i++) {
+    const marker = `[PROFANITY:${i + 1}]`;
+    if (!finalText.includes(marker)) {
+      return finalText;
+    }
+  }
 
   // Translate each profanity token individually through Hermes
   const sourceLangCode = getSourceLangCode(text);
@@ -181,7 +197,6 @@ async function translateWithPipeline(
     );
 
     const translatedTokens = translatedToken.split(/\s+/);
-    let finalText = maskedResult;
     profanityTokens.forEach((_, i) => {
       const marker = `[PROFANITY:${i + 1}]`;
       const translated = translatedTokens[i] || profanityTokens[i];
@@ -190,7 +205,7 @@ async function translateWithPipeline(
     return finalText;
   } catch (e: any) {
     console.error("Pipeline Hermes unmask failed:", e.message);
-    return maskedResult;
+    return finalText;
   } finally {
     clearTimeout(pipelineTimeoutId);
   }
@@ -306,6 +321,18 @@ async function callOpenRouter(
 }
 
 /**
+ * Result of a single translation call. Wrapping the output in an object
+ * lets callers distinguish "model returned the same text because the input
+ * was untranslatable" (e.g. "1300", "255/65 R17 110H") from "all providers
+ * failed and we echoed the input as a fallback" — without this distinction
+ * the user-facing error message is triggered for legitimate pass-throughs.
+ */
+interface TranslateResult {
+  text: string;
+  ok: boolean;
+}
+
+/**
  * Main translate function with routing:
  * 1. Hermes 3 (OpenRouter, primary for ALL content — clean + explicit)
  * 2. Fallback → Claude Sonnet 5 (OpenRouter, clean content only)
@@ -313,13 +340,18 @@ async function callOpenRouter(
  *
  * If any provider returns output containing Cyrillic / CJK characters,
  * WRONG_LANG_OUTPUT_REGEX rejects the response and the cascade continues.
+ * Returns `{ text, ok: true }` on success (text may equal the input for
+ * untranslatable tokens) and `{ text, ok: false }` when every provider
+ * failed.
  */
 async function translate(
   text: string,
   targetLang: string,
   openrouterKey: string,
-): Promise<string> {
-  if (!isValidString(text)) return text;
+): Promise<TranslateResult> {
+  if (!isValidString(text)) {
+    return { text, ok: false };
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -329,7 +361,7 @@ async function translate(
 
     // Primary: Hermes 3 for ALL content (clean + explicit)
     try {
-      return await callOpenRouter(
+      const out = await callOpenRouter(
         text,
         systemContent,
         model,
@@ -337,6 +369,7 @@ async function translate(
         openrouterKey,
         controller,
       );
+      return { text: out, ok: true };
     } catch (orError: any) {
       console.error("Hermes (primary) failed:", orError.message);
     }
@@ -347,7 +380,7 @@ async function translate(
       console.error(
         "Hermes failed for explicit content, no clean-content fallback available",
       );
-      return text;
+      return { text, ok: false };
     }
 
     const sourceLangCode = getSourceLangCode(text);
@@ -356,7 +389,7 @@ async function translate(
 
     // Fallback: Claude Sonnet 5 via OpenRouter
     try {
-      return await callOpenRouter(
+      const out = await callOpenRouter(
         text,
         basePrompt,
         MODELS.CLAUDE,
@@ -364,13 +397,14 @@ async function translate(
         openrouterKey,
         controller,
       );
+      return { text: out, ok: true };
     } catch (claudeError: any) {
       console.error("Claude fallback failed:", claudeError.message);
     }
 
     // Second fallback: Gemini 2.5 Pro via OpenRouter
     try {
-      return await callOpenRouter(
+      const out = await callOpenRouter(
         text,
         basePrompt,
         MODELS.GEMINI,
@@ -378,15 +412,16 @@ async function translate(
         openrouterKey,
         controller,
       );
+      return { text: out, ok: true };
     } catch (geminiError: any) {
       console.error("Gemini failed:", geminiError.message);
     }
 
     console.error("All translation providers failed");
-    return text;
+    return { text, ok: false };
   } catch (e: any) {
     console.error("Translation error:", e.message);
-    return text;
+    return { text, ok: false };
   } finally {
     clearTimeout(timeoutId);
   }

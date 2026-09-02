@@ -2,7 +2,7 @@
 
 ## Completed
 
-- [x] **Language parameter hardening** (this milestone)
+- [x] **Language parameter hardening** (commit `4babff6`)
   - Added `WRONG_LANG_OUTPUT_REGEX` safety guard
   - Added per-provider `TEMPERATURE` map + `getTemperatureForProvider()`
   - Added `buildSystemPrompt()` with full ruleset (OUTPUT LANGUAGE LOCK,
@@ -13,13 +13,32 @@
   - Replaced translator cascade with `runProvider()` that applies the safety
     guard
   - Mirrored all changes in `api/webhook.ts` (Vercel serverless function)
-  - Updated `tests/translator.test.ts` to assert against the new prompt
-    structure (39 tests, all passing)
-  - Updated `tests/webhook.test.ts` to import and assert against the real
-    `buildSystemPrompt` (22 tests, all passing)
-  - Updated `scripts/test-providers.js` to use per-provider temperatures
-  - Updated `README.md` to document the new language parameter model
-  - **All 61 tests pass, `tsc --noEmit` clean**
+  - All 61 tests passed.
+
+- [x] **Translation quality fixes** (this commit)
+  - **Issue 1 (profanity marker leak)**: added rule 10 "PRESERVE
+    PLACEHOLDER MARKERS" to `buildSystemPrompt` so Claude and Gemini
+    preserve `[PROFANITY:N]` markers verbatim during the masked
+    translation. Added a defensive marker-loss check in both
+    `translateWithPipeline` (webhook) and `translateWithProfanityPipeline`
+    (library) so the pipeline returns the masked translation rather than
+    producing corrupted output if the marker is still lost.
+  - **Issue 2 (numbers / codes returning error)**: changed the return
+    type of `translate()` in `api/webhook.ts` from `Promise<string>` to
+    `Promise<{ text: string; ok: boolean }>`. Now `ok: true` is set
+    whenever any provider returned a response, even if that response
+    equals the input (correct behavior for untranslatable tokens). The
+    `if (result === text) return errorMessage` check has been replaced
+    with `if (!result.ok) return errorMessage`. The `buildSystemPrompt`
+    also gained rule 11 "NUMBERS, CODES, AND IDENTIFIERS" telling the
+    model to pass such tokens through verbatim.
+  - **Issue 3 (Thai loanword mistranslation)**: added rule 12 "THAI
+    LOANWORDS AND TECHNICAL TERMS" to `buildSystemPrompt`. It calls
+    out "หล้อ" = tire (from Mandarin "lún" 轮) and gives the model a
+    decision procedure for choosing between competing meanings of Thai
+    words with multiple senses.
+  - Added 3 new tests covering the three new prompt rules. 64/64
+    tests pass, `tsc --noEmit` clean.
 
 ## Roadmap
 
@@ -40,3 +59,8 @@
 - `getSystemPrompt()` legacy alias in `src/core/config.ts` ignores
   `_sourceUser` and `_contextMessages`. It only exists to keep the import
   surface stable. New code should use `getSystemPromptForProvider()`.
+- The marker-preservation rule is enforced by both the prompt and a
+  defensive code check. The defensive check is there as a safety net
+  because models occasionally ignore prompt instructions. A future
+  improvement would be to make the marker format less translateable
+  (e.g. `<<<P1>>>` instead of `[PROFANITY:1]`).
