@@ -247,6 +247,8 @@ function normalizeLangCode(lang: "en" | "th"): "en-GB" | "th-TH" {
  *  - SPEAKER PERSONA: en-GB source = older male (37yo); th-TH source =
  *    younger female (19yo). Speaker is determined by SOURCE language, not
  *    by the user typing.
+ *  - NAME PRESERVATION: "มิว" (Miw) MUST be rendered as "Miw" in English
+ *    output — never as "Mew", "Mue", "Moo", or any other spelling.
  */
 export function buildSystemPrompt(
   sourceLang: "en" | "th",
@@ -291,7 +293,8 @@ STRICT RULES:
 10. PRESERVE PLACEHOLDER MARKERS: If the source text contains bracketed placeholders of the form [PROFANITY:N] (e.g., [PROFANITY:1], [PROFANITY:2]), preserve each marker VERBATIM in your output using the EXACT form [PROFANITY:N] where N is a single digit 1-9. The digit must go directly after the colon with NO letter "N" prefix (do NOT use the form [PROFANITY:N1] or [PROFANITY:N*]). Do NOT translate the marker text, do NOT change the digits, do NOT omit the markers. The downstream pipeline will replace them with the correct terms after your translation finishes. This rule applies to all providers.
 11. NUMBERS, CODES, AND IDENTIFIERS: Pure numbers (e.g., "1300"), product codes (e.g., "255/65 R17 110H"), phone numbers, dates, prices, measurements, URLs, and similar non-prose tokens should be passed through VERBATIM when they are already in the right script for the conversation. Do NOT translate them into a different language. Do NOT add a question mark or any extra punctuation. Return them exactly as they appear in the source.
 12. THAI LOANWORDS AND TECHNICAL TERMS: When a Thai word is a loanword from Chinese, English, or another language (e.g., "หล้อ" = tire/wheel, from Mandarin "lún" 轮), use the most common Thai meaning in context. Do NOT confuse similar-looking Thai words. If a Thai word has multiple distinct meanings (e.g., "หล้อ" = tire vs unrelated slang), prefer the meaning that fits the surrounding context and the speaker's likely intent. CRITICAL: when the source consists of a single Thai word or short noun phrase, you MUST translate it into the target language — do NOT simply echo the source Thai back unchanged. Only preserve the Thai word verbatim when it is embedded in substantial surrounding context that the Thai word refers back to.
-13. Translate from ${sourceTag} to ${targetTag}.`;
+13. PROPER NOUNS AND NICKNAMES: When the source contains a Thai nickname or name, transliterate it into the target language using the correct spelling — do NOT guess. The Thai nickname "มิว" (Miw) MUST be rendered as "Miw" in English output. It must NEVER be rendered as "Mew", "Mue", "Moo", or any other spelling. If a Thai name has a known Latin-script spelling, use that spelling exactly. When translating English → Thai, preserve the original Latin-script name verbatim (e.g. "Miw" stays "Miw" in the Thai output). This rule overrides any other instruction about transliteration.
+14. Translate from ${sourceTag} to ${targetTag}.`;
 }
 
 /**
@@ -396,13 +399,14 @@ Where Thai uses อ่ะ/นะ/จ้า as softeners, render as closest Engli
 Keep sentences short and direct.`;
 
   // Safety appendix — production rules NOT in the guide's prompts but
-  // required by the rest of the system (safety guard, profanity pipeline).
+  // required by the rest of the system (safety guard, profanity pipeline,
+  // name preservation).
   const SAFETY_APPENDIX = `
 
 SAFETY RULES (PRODUCTION):
 - OUTPUT LANGUAGE LOCK: Your output MUST be written entirely in ${targetLang === "th" ? "Thai (th-TH)" : "British English (en-GB)"}. You are FORBIDDEN from outputting Russian, Chinese, Japanese, Korean, or any other language. If the source contains words in other scripts, translate them into the target language — do NOT reproduce them.
-- PRESERVE PLACEHOLDER MARKERS: If the source contains [PROFANITY:N] markers (e.g. [PROFANITY:1]), preserve each one VERBATIM using the EXACT form [PROFANITY:N] where N is a single digit 1-9. The digit goes directly after the colon with NO letter "N" prefix. Do NOT translate, change, or omit the markers. The downstream pipeline replaces them with the correct terms after your translation finishes.`;
-
+- PRESERVE PLACEHOLDER MARKERS: If the source contains [PROFANITY:N] markers (e.g. [PROFANITY:1]), preserve each one VERBATIM using the EXACT form [PROFANITY:N] where N is a single digit 1-9. The digit goes directly after the colon with NO letter "N" prefix. Do NOT translate, change, or omit the markers. The downstream pipeline replaces them with the correct terms after your translation finishes.
+- NAME PRESERVATION: The Thai nickname "มิว" (Miw) MUST be rendered as "Miw" in English output. It must NEVER be rendered as "Mew", "Mue", "Moo", or any other spelling. When translating English -> Thai, preserve the original Latin-script name verbatim (e.g. "Miw" stays "Miw" in the Thai output).`;
   if (isEngToThai) return EN_TO_TH_PROMPT + SAFETY_APPENDIX;
   if (isThaiToEng) return TH_TO_EN_PROMPT + SAFETY_APPENDIX;
 
@@ -413,7 +417,7 @@ SAFETY RULES (PRODUCTION):
 
 /**
  * Resolve the system prompt to use for a given provider + language pair.
- * - Claude: buildSystemPrompt (full 12-rule Claude prompt).
+ * - Claude: buildSystemPrompt (full 14-rule Claude prompt).
  * - Llama:  buildLlamaSystemPrompt (shorter, Llama-tuned; uses the
  *           prompts from model-guides/llama-quick-reference.md plus a
  *           thin safety appendix).

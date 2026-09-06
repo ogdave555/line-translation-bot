@@ -89,6 +89,30 @@
     rule (which the profanity pipeline relies on). Both are appended as a
     short safety block at the end.
 
+- [x] **Name preservation rule**
+  - The Thai nickname "มิว" was being rendered as "Mew" in English output
+    because the model guide said "Miw stays Miw" but the guide is a
+    reference doc — the prompt the model actually sees (`buildSystemPrompt`)
+    had no name-preservation rule.
+  - Added rule 13 "PROPER NOUNS AND NICKNAMES" to `buildSystemPrompt()`:
+    "มิว" (Miw) MUST be rendered as "Miw" in English output, NEVER as
+    "Mew", "Mue", "Moo", or any other spelling. Also preserves the
+    original Latin-script name verbatim when translating English → Thai.
+  - Mirrored the same rule in the Llama safety appendix
+    (`buildLlamaSystemPrompt`), so both providers see it.
+  - JSDoc on `buildSystemPrompt` updated to mention the rule; the
+    stale "12-rule" reference in `getSystemPromptForProvider`'s JSDoc
+    corrected to "14-rule".
+- [x] **Skip standalone Thai laughter**
+  - Messages that are only a run of Arabic "5"s ("55", "555", "5555", …)
+    are Thai internet slang for "hahaha" and carry nothing to translate.
+  - Added `isStandaloneThaiLaughter()` to `src/core/utils.ts` and wired it
+    into the webhook filter chain in `api/webhook.ts` so these messages
+    are skipped before any API call.
+  - Smoke-verified: 11/11 cases pass (55/555/5555/5555555555 + whitespace
+    variants → skip; single "5", "5555 hello", "hello 555", "55a55", "" →
+    not skipped).
+
 ## Roadmap
 
 - [ ] Optional: split long messages through `buildSystemPrompt` with a

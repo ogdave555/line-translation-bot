@@ -26,10 +26,10 @@ export function hasEnglishText(text: string): boolean {
 export function isOnlyThai(text: string): boolean {
   const thaiUnicodeRange = /[\u0E00-\u0E7F]/;
   const latinChars = /[A-Za-z]/;
-  
+
   const hasThai = thaiUnicodeRange.test(text);
   const hasLatin = latinChars.test(text);
-  
+
   return hasThai && !hasLatin;
 }
 
@@ -48,11 +48,11 @@ export function extractEmojis(text: string): string[] {
   const emojiRegex = /[\u2600-\u26FF\u2700-\u27BF]|[\uFE00-\uFE0F\u200D]|[^\x00-\x7F][^\x00-\x7F?]/g;
   const emojis: string[] = [];
   let match;
-  
+
   while ((match = emojiRegex.exec(text)) !== null) {
     emojis.push(match[0]);
   }
-  
+
   return emojis;
 }
 
@@ -79,19 +79,19 @@ export function removeUrls(text: string): string {
  */
 export function shouldSkipMessage(message: { type?: string; text?: string }): boolean {
   if (!message.type) return false;
-  
+
   const skipTypes = ['image', 'video', 'audio', 'file', 'sticker', 'animation', 'postback', 'follow', 'join', 'leave', 'message'];
-  
+
   // Skip non-text message types
   if (message.type !== 'text') {
     return true;
   }
-  
+
   // Skip if no text content
   if (!message.text || message.text.trim() === '') {
     return true;
   }
-  
+
   return false;
 }
 
@@ -100,13 +100,13 @@ export function shouldSkipMessage(message: { type?: string; text?: string }): bo
  */
 export function cleanTextForTranslation(text: string): string {
   let cleaned = text;
-  
+
   // Remove URLs
   cleaned = removeUrls(cleaned);
-  
+
   // Remove extra whitespace
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  
+
   return cleaned;
 }
 
@@ -116,11 +116,11 @@ export function cleanTextForTranslation(text: string): string {
 export function detectLanguage(text: string): 'en' | 'th' | 'mixed' {
   const hasThai = hasThaiText(text);
   const hasEnglish = hasEnglishText(text);
-  
+
   if (hasThai && hasEnglish) return 'mixed';
   if (hasThai) return 'th';
   if (hasEnglish) return 'en';
-  
+
   // Default to English for pure numbers/symbols
   return 'en';
 }
@@ -132,10 +132,10 @@ export function detectLanguage(text: string): 'en' | 'th' | 'mixed' {
 export function extractTextContent(text: string): string {
   // Remove URLs first
   let result = removeUrls(text);
-  
+
   // Trim whitespace
   result = result.trim();
-  
+
   return result;
 }
 
@@ -145,6 +145,21 @@ export function extractTextContent(text: string): string {
 export function isCommandMessage(text: string): boolean {
   const commands = ['/translate', '/help', '/reset', '@'];
   return commands.some(cmd => text.toLowerCase().startsWith(cmd));
+}
+
+/**
+ * Detect a standalone Thai "hahaha" message.
+ *
+ * In Thai internet slang, laughter is written as a run of the Arabic
+ * digit 5 (because 5 = "ha" in Thai), e.g. "55", "555", "5555".
+ * A message that is ONLY such a run carries nothing to translate and
+ * would just waste an API call — skip it.
+ *
+ * We match Arabic numerals only (Thais use 5, not ๕, for this).
+ * A single "5" is not laughter, so we require at least two.
+ */
+export function isStandaloneThaiLaughter(text: string): boolean {
+  return /^5{2,}$/.test(text.trim());
 }
 
 /**

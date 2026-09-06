@@ -43,9 +43,15 @@ selection).
 ## Open work
 
 - None for this milestone. Routes restored to intent; Llama fallback now
-  uses a shorter, guide-tuned prompt with the safety rules preserved.
+  uses a shorter, guide-tuned prompt with the safety rules preserved;
+  hallucinated wrong-script words are rejected; "มิว" renders as "Miw".
 - Roadmap items unchanged (per-chunk context, prompt caching, /stats).
 - Follow-up: remove the legacy `MODELS.CLAUDE` OpenRouter-style alias
   once no test references it.
 - Follow-up: rename `appendHermesDirectives` import in `api/webhook.ts`
   to `appendLlamaDirectives` (cosmetic — the alias is deprecated).
+- Follow-up: the name rule is hardcoded to "มิว" → "Miw". If the cast
+  changes, update rule 13 in `buildSystemPrompt()` and the
+  NAME PRESERVATION line in `buildLlamaSystemPrompt()`.
+- Follow-up: `isStandaloneThaiLaughter` only matches Arabic "5" runs.
+  If Thai-script "๕๕๕" ever appears in practice, extend the regex.

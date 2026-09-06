@@ -12,7 +12,7 @@ import {
   buildSystemPrompt,
   getSystemPromptForProvider,
 } from "../src/core/config.js";
-import { hasThaiText, cleanTextForTranslation } from "../src/core/utils.js";
+import { hasThaiText, cleanTextForTranslation, isStandaloneThaiLaughter } from "../src/core/utils.js";
 import { callAnthropic, ANTHROPIC_MAX_TOKENS } from "../src/core/anthropic.js";
 
 interface LineEvent {
@@ -478,6 +478,8 @@ export async function POST(req: Request): Promise<Response> {
       if (!event.replyToken) continue;
       const text = cleanText(event.message.text);
       if (!isValidString(text)) continue;
+      // Skip standalone Thai "hahaha" (runs of 5s) — nothing to translate.
+      if (isStandaloneThaiLaughter(text)) continue;
 
       // Guard against excessively long messages that would exceed LINE's reply limit
       if (text.length > MAX_REPLY_CHARS) {
