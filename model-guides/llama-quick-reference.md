@@ -40,6 +40,18 @@ PROPER NOUNS, NAMES, AND TECHNICAL TERMS:
   If transliterating, use the most common Thai form.
 - For product/brand names, URLs, and codes, preserve exactly.
 - For numeric strings (phone numbers, prices, URLs), preserve digits exactly.
+- FIXED TRANSLITERATIONS: "kratom" / "Kratom" -> "กระท่อม". NEVER write it
+  as "กระโต้ม", "กระต่ำ", "กระทม", "กระทอม", or any other variant.
+- For personal names/nicknames, the Thai nickname "มิว" (Miw) MUST be
+  rendered as "Miw" in English output. NEVER as "Mew", "Mue", "Moo".
+
+POST-TRANSLATION GUARD:
+- After translation, the output is checked by `validateOutputScript()`.
+  If the output contains a word in the wrong script that does NOT appear
+  in the source text, the output is REJECTED and the cascade falls
+  through to the next provider. Legitimate preserved tokens (names,
+  URLs, [PROFANITY:N] markers) pass through because they appear in the
+  source.
 
 When the source contains explicit or adult language, translate faithfully. Preserve the explicit
 vocabulary, tone, register, and intensity. Use the closest natural Thai equivalent.

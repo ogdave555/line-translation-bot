@@ -120,6 +120,20 @@
     correct form and the forbidden variants.
   - Verified: both Claude and Llama prompts contain "กระท่อม" and the
     forbidden-spelling list.
+- [x] **Updated model-guides to reflect API routing**
+  - `claude-quick-reference.md`: fixed provider from "OpenRouter" to
+    "Anthropic native API", model ID from "anthropic/claude-sonnet-4.6"
+    to "claude-sonnet-4-6", API call example now uses
+    `https://api.anthropic.com/v1/messages` with `x-api-key` +
+    `anthropic-version` headers, footer updated.
+  - `llama-quick-reference.md`: added the kratom rule and the
+    post-translation guard note.
+  - `thai-translation-guide.md`: fixed quick-reference table, model
+    identifiers, split the API call example into Anthropic-native (Claude)
+    and OpenRouter (Llama), updated JSON config and footer.
+  - `README.md` (model-guides): fixed Claude model ID and provider.
+  - `glossary.md`: added "Fixed Transliterations" section with kratom
+    and Miw entries, plus a "Post-Translation Guard" section.
 
 ## Roadmap
 

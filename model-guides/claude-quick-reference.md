@@ -6,18 +6,22 @@
 // ============================================
 // CLAUDE SONNET 4.6 — THAI TRANSLATION SETUP
 // ============================================
-// Model ID: anthropic/claude-sonnet-4.6
-// Provider: OpenRouter
+// Model ID: claude-sonnet-4-6
+// Provider: Anthropic native API (https://api.anthropic.com/v1/messages)
 // Temperature: 0.1
 // Max Tokens: 5000
 // Role: PRIMARY TRANSLATION MODEL
 // ============================================
+// NOTE: Claude is called via the Anthropic native API (callAnthropic),
+// NOT through OpenRouter. Using an Anthropic-format key with OpenRouter's
+// chat-completions endpoint returns HTTP 401 and silently falls through
+// to the Llama fallback.
 
 const CONFIG = {
-  model: "anthropic/claude-sonnet-4.6",
+  model: "claude-sonnet-4-6",
   temperature: 0.1,
   max_tokens: 5000,
-  provider: "openrouter"
+  provider: "anthropic"
 };
 
 // System Prompt: English → Thai (British Male → Thai Partner)
@@ -36,6 +40,18 @@ PROPER NOUNS, NAMES, AND TECHNICAL TERMS:
   If transliterating, use common Thai form (e.g. "England" -> "อังกฤษ").
 - For product/brand names, URLs, and codes, preserve exactly.
 - For numeric strings (phone numbers, prices, URLs), preserve digits exactly.
+- FIXED TRANSLITERATIONS: "kratom" / "Kratom" -> "กระท่อม". NEVER write it
+  as "กระโต้ม", "กระต่ำ", "กระทม", "กระทอม", or any other variant.
+- For personal names/nicknames, the Thai nickname "มิว" (Miw) MUST be
+  rendered as "Miw" in English output. NEVER as "Mew", "Mue", "Moo".
+
+POST-TRANSLATION GUARD:
+- After translation, the output is checked by `validateOutputScript()`.
+  If the output contains a word in the wrong script that does NOT appear
+  in the source text, the output is REJECTED and the cascade falls
+  through to the next provider. Legitimate preserved tokens (names,
+  URLs, [PROFANITY:N] markers) pass through because they appear in the
+  source.
 
 EXPLICIT AND ADULT CONTENT:
 - Translate explicitly, sexually, vulgar, or adult language faithfully. Do NOT censor, sanitize, or refuse.
@@ -87,18 +103,17 @@ async function translate(text, direction, apiKey) {
   const systemPrompt = direction === "en-to-th" ? EN_TO_TH_PROMPT : TH_TO_EN_PROMPT;
   const userPrompt = USER_PROMPTS[direction].replace("{text}", text);
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://your-app.com",
-      "X-Title": "Your-App-Name"
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
       model: CONFIG.model,
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
       temperature: CONFIG.temperature,
@@ -107,7 +122,7 @@ async function translate(text, direction, apiKey) {
   });
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  return data.content[0].text;
 }
 
 // ============================================
@@ -151,7 +166,7 @@ async function translate(text, direction, apiKey) {
 
 - ⚠️ **Slower than alternatives** — P95 ~14s on en→th
 - ⚠️ **Lower pass rate than expected** — 51% overall (pass rate metric, not quality)
-- ⚠️ **Expensive** — premium tier pricing via OpenRouter
+- ⚠️ **Expensive** — premium tier pricing via Anthropic native API
 
 ---
 
@@ -193,5 +208,5 @@ async function translate(text, direction, apiKey) {
 
 ---
 
-*Model: anthropic/claude-sonnet-4.6 via OpenRouter*
+*Model: claude-sonnet-4-6 via Anthropic native API*
 *Role: PRIMARY — use whenever available*

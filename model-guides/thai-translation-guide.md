@@ -4,7 +4,7 @@
 
 | Model | Role | Best For | Temperature | Max Tokens | Provider |
 |-------|------|----------|-------------|------------|----------|
-| **claude-sonnet-4.6** | Primary | High-quality, persona-consistent, emoji-preserving | 0.1 | 5000 | OpenRouter |
+| **claude-sonnet-4.6** | Primary | High-quality, persona-consistent, emoji-preserving | 0.1 | 5000 | Anthropic native API |
 | **llama-3.3-70b-instruct** | Backup | Fast, no 400 errors, casual register | 0.1 | 5000 | OpenRouter |
 
 ---
@@ -12,7 +12,7 @@
 ## Model Identifiers
 
 ```
-Primary (Claude):   anthropic/claude-sonnet-4.6
+Primary (Claude):   claude-sonnet-4-6
 Backup (Llama):     meta-llama/Llama-3.3-70B-Instruct
 Judge:              deepseek/deepseek-chat-v3
 ```
@@ -32,11 +32,35 @@ Judge:              deepseek/deepseek-chat-v3
 // Default 2500 is TOO LOW for multi-turn chat translations
 ```
 
-### OpenRouter API Call
+### Anthropic Native API Call (Claude)
 
 ```javascript
 const body = {
-  model: "anthropic/claude-sonnet-4.6",  // or meta-llama/Llama-3.3-70B-Instruct
+  model: "claude-sonnet-4-6",
+  system: SYSTEM_PROMPT,
+  messages: [
+    { role: "user", content: USER_PROMPT }
+  ],
+  temperature: 0.1,
+  max_tokens: 5000
+};
+
+const response = await fetch("https://api.anthropic.com/v1/messages", {
+  method: "POST",
+  headers: {
+    "x-api-key": CLAUDE_API_KEY,
+    "anthropic-version": "2023-06-01",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify(body)
+});
+```
+
+### OpenRouter API Call (Llama)
+
+```javascript
+const body = {
+  model: "meta-llama/Llama-3.3-70B-Instruct",
   messages: [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: USER_PROMPT }
@@ -320,8 +344,8 @@ Score this translation. JSON only, no prose.
   "models": [
     {
       "name": "claude-sonnet-4.6",
-      "modelId": "anthropic/claude-sonnet-4.6",
-      "provider": "openrouter",
+      "modelId": "claude-sonnet-4-6",
+      "provider": "anthropic",
       "temperature": 0.1,
       "max_tokens_override": 5000
     },
@@ -428,5 +452,5 @@ Memory Bank:         memory-bank/
 ---
 
 *Last updated: 2026-09-06*
-*Primary model: claude-sonnet-4.6 (anthropic/claude-sonnet-4.6)*
-*Backup model: llama-3.3-70b-instruct (meta-llama/Llama-3.3-70B-Instruct)*
+*Primary model: claude-sonnet-4.6 (claude-sonnet-4-6 via Anthropic native API)*
+*Backup model: llama-3.3-70b-instruct (meta-llama/Llama-3.3-70B-Instruct via OpenRouter)*

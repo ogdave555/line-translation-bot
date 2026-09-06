@@ -246,6 +246,16 @@ Thai LINE chat commonly uses shortened forms:
 | Bangkok | กรุงเทพฯ | Thai |
 | USA | อเมริกา, ยูเอสเอ | Thai |
 
+## Fixed Transliterations
+
+**RULE:** These English terms have a single, fixed Thai transliteration.
+Do NOT guess or use a different spelling.
+
+| English | Thai | Notes |
+|---------|------|-------|
+| kratom / Kratom | กระท่อม | NEVER "กระโต้ม", "กระต่ำ", "กระทม", "กระทอม" |
+| Miw (nickname) | มิว | NEVER "เมว", "มือ", "หมีว์" |
+
 ## Product/Brand Names
 
 **RULE:** Preserve exactly, no translation, no transliteration.
@@ -273,3 +283,12 @@ Examples:
 ---
 
 *Last updated: 2026-09-06*
+
+## Post-Translation Guard
+
+After translation, the output is checked by `validateOutputScript()` in
+`src/core/config.ts`. If the output contains a word in the wrong script
+that does NOT appear in the source text, the output is REJECTED and the
+cascade falls through to the next provider. Legitimate preserved tokens
+(names, URLs, `[PROFANITY:N]` markers) pass through because they appear
+in the source.

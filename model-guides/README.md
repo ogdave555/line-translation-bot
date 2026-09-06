@@ -17,9 +17,10 @@ This folder contains everything needed to run Claude Sonnet 4.6 and Llama 3.3 70
 ```javascript
 // From: memory-bank/model-guides/claude-quick-reference.md
 const CONFIG = {
-  model: "anthropic/claude-sonnet-4.6",
+  model: "claude-sonnet-4-6",
   temperature: 0.1,
-  max_tokens: 5000
+  max_tokens: 5000,
+  provider: "anthropic"
 };
 ```
 
@@ -38,7 +39,7 @@ const CONFIG = {
 | | Claude Sonnet 4.6 | Llama 3.3 70B |
 |--|--|--|
 | **Role** | Primary | Backup |
-| **Provider** | OpenRouter | OpenRouter |
+| **Provider** | Anthropic native API | OpenRouter |
 | **Quality** | 51% pass rate | 47% pass rate |
 | **Speed** | Slower (P95 ~14s en→th) | Faster |
 | **400 Errors** | None | None |
@@ -109,3 +110,4 @@ For standalone use outside the translation suite, copy the relevant quick-refere
 ---
 
 *Last updated: 2026-09-06*
+
