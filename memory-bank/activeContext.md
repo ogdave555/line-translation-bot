@@ -12,7 +12,7 @@ instead of OpenRouter. Llama 3.3 70B stays on OpenRouter as the fallback.
   to `https://api.anthropic.com/v1/messages` with `x-api-key` +
   `anthropic-version` headers and the Anthropic-native body shape.
 - **Claude → Anthropic native** in both `api/webhook.ts` and
-  `src/translation/translator.ts` (runProvider() branches on provider).
+  `src/core/translate.ts` (runProvider() branches on provider).
 - **Llama → OpenRouter** unchanged (it was always correct).
 - **TIMEOUT_MS raised from 15s → 25s** in `api/webhook.ts` because Claude's
   documented P95 on en→th (~14s) was too close to 15s, causing spurious
@@ -69,7 +69,7 @@ selection).
     `translateWithMemory`, `translateWithProfanityPipeline`.
   - `api/webhook.ts` imports `runProvider`, `maskProfanity`,
     `getTargetLangCode`, `getSourceLangCode` from `src/core/translate.ts`.
-  - `src/translation/translator.ts` re-exports shared functions
+  - `src/core/translate.ts` re-exports shared functions
     and keeps `translateWithProfanityPipelineAndMemory`.
   - `src/bot/bot.ts` and `src/bot/index.ts` import `translateWithMemory`
     from `src/core/translate.ts`.

@@ -34,5 +34,5 @@
   OpenRouter's OpenAI-compatible chat-completions (system as first
   message). The two HTTP shapes are different — see
   `src/core/anthropic.ts:1` for the Claude path and
-  `src/translation/translator.ts:44` (`callOpenRouter`) for the Llama path.
+  `src/core/translate.ts` (`callOpenRouter`) for the Llama path.
 

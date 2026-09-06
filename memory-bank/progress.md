@@ -59,7 +59,7 @@
   - **Fix**: new `src/core/anthropic.ts` with `callAnthropic()` posts to
     `https://api.anthropic.com/v1/messages` with `x-api-key` +
     `anthropic-version` headers and the Anthropic-native body shape. Both
-    `api/webhook.ts` and `src/translation/translator.ts` now route Claude
+    `api/webhook.ts` and `src/core/translate.ts` now route Claude
     through `callAnthropic()` and keep Llama on OpenRouter.
   - **Bonus**: `TIMEOUT_MS` raised from 15s → 25s in `api/webhook.ts` so
     legitimate slow Claude calls don't get killed by Vercel's 30s budget.
@@ -129,7 +129,7 @@
   - `api/webhook.ts` imports `runProvider`, `maskProfanity`,
     `getTargetLangCode`, `getSourceLangCode` from `src/core/translate.ts`
     instead of duplicating the cascade inline.
-  - `src/translation/translator.ts` re-exports shared functions from
+  - `src/core/translate.ts` re-exports shared functions from
     `src/core/translate.ts` and keeps `translateWithProfanityPipelineAndMemory`.
   - `src/bot/bot.ts` and `src/bot/index.ts` import `translateWithMemory`
     from `src/core/translate.ts` instead of `src/translation/translator.ts`.

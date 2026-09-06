@@ -38,10 +38,10 @@ used by production routing.
 - **Claude** is reached via the **Anthropic native Messages API** in
   `src/core/anthropic.ts` (`callAnthropic()`).
 - **Llama** is reached via OpenRouter chat-completions in
-  `src/translation/translator.ts` (`callOpenRouter()`).
+  `src/core/translate.ts` (`callOpenRouter()`).
 - The two endpoints have different request shapes — do NOT collapse them.
 
-`runProvider()` (in `src/translation/translator.ts`) branches on
+`runProvider()` (in `src/core/translate.ts`) branches on
 `provider === "claude"` to call `callAnthropic()` and uses
 `callOpenRouter()` for everything else. The `api/webhook.ts` cascade
 calls each directly.
