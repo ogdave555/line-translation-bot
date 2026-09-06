@@ -8,7 +8,7 @@
  *
  * Routing:
  * 1. Claude Sonnet 4.6 via the Anthropic native Messages API
- *    (CLAUDE_API_KEY, model `claude-sonnet-4-6`) — primary for ALL content.
+ *    (CLAUDE_API_KEY, model `claude-sonnet-5`) — primary for ALL content.
  * 2. Fallback → Llama 3.3 70B via OpenRouter (OPENROUTER_API_KEY).
  *
  * Output guards:

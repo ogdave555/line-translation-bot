@@ -12,7 +12,7 @@
 ## Model Identifiers
 
 ```
-Primary (Claude):   claude-sonnet-4-6
+Primary (Claude):   claude-sonnet-5
 Backup (Llama):     meta-llama/Llama-3.3-70B-Instruct
 Judge:              deepseek/deepseek-chat-v3
 ```
@@ -36,7 +36,7 @@ Judge:              deepseek/deepseek-chat-v3
 
 ```javascript
 const body = {
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   system: SYSTEM_PROMPT,
   messages: [
     { role: "user", content: USER_PROMPT }
@@ -344,7 +344,7 @@ Score this translation. JSON only, no prose.
   "models": [
     {
       "name": "claude-sonnet-4.6",
-      "modelId": "claude-sonnet-4-6",
+      "modelId": "claude-sonnet-5",
       "provider": "anthropic",
       "temperature": 0.1,
       "max_tokens_override": 5000
@@ -452,5 +452,5 @@ Memory Bank:         memory-bank/
 ---
 
 *Last updated: 2026-09-06*
-*Primary model: claude-sonnet-4.6 (claude-sonnet-4-6 via Anthropic native API)*
+*Primary model: claude-sonnet-4.6 (claude-sonnet-5 via Anthropic native API)*
 *Backup model: llama-3.3-70b-instruct (meta-llama/Llama-3.3-70B-Instruct via OpenRouter)*

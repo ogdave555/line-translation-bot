@@ -172,7 +172,7 @@ internal short codes (`en`, `th`) elsewhere. The prompt builder
 
 | Tier         | Provider             | Model                                | Endpoint                      | Handles Explicit |
 | ------------ | -------------------- | ------------------------------------ | ----------------------------- | ---------------- |
-| 1 (primary)  | Claude Sonnet 4.6    | `claude-sonnet-4-6`                  | Anthropic native Messages API | ✅ Yes           |
+| 1 (primary)  | Claude Sonnet 4.6    | `claude-sonnet-5`                  | Anthropic native Messages API | ✅ Yes           |
 | 2 (fallback) | Llama 3.3 70B        | `meta-llama/Llama-3.3-70B-Instruct`  | OpenRouter chat-completions   | ❌ No (masked)   |
 
 ### Context Awareness

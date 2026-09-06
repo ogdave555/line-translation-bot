@@ -7,7 +7,7 @@
 - **Deployment**: Vercel serverless function at `api/webhook.ts`.
 - **AI providers** (two-tier cascade):
   1. **Claude Sonnet 4.6** via the **Anthropic native Messages API**
-     (`https://api.anthropic.com/v1/messages`, model `claude-sonnet-4-6`,
+     (`https://api.anthropic.com/v1/messages`, model `claude-sonnet-5`,
      `CLAUDE_API_KEY`) — primary for ALL content (clean + explicit).
   2. **Llama 3.3 70B** via OpenRouter chat-completions
      (`meta-llama/Llama-3.3-70B-Instruct`, `OPENROUTER_API_KEY`) — fallback.

@@ -13,7 +13,7 @@
 ## AI Models
 
 - **Primary**: Claude Sonnet 4.6 via the **Anthropic native Messages API**
-  (`https://api.anthropic.com/v1/messages`, model id `claude-sonnet-4-6`)
+  (`https://api.anthropic.com/v1/messages`, model id `claude-sonnet-5`)
   using `CLAUDE_API_KEY`. Implemented in `src/core/anthropic.ts`
   (`callAnthropic()`). Previously routed through OpenRouter which silently
   401'd in production — restored to native Anthropic.
@@ -25,7 +25,7 @@
   chat-completions body.
 - **Anthropic native constants** live in `src/core/anthropic.ts`:
   `ANTHROPIC_API_URL`, `ANTHROPIC_VERSION = "2023-06-01"`,
-  `ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-4-6"`,
+  `ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-5"`,
   `ANTHROPIC_MAX_TOKENS = 5000`.
 - **Legacy alias**: `MODELS.CLAUDE = "anthropic/claude-sonnet-4.6"` in
   `src/core/config.ts` is the OpenRouter-style id, kept for test

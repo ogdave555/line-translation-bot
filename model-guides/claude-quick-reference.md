@@ -6,7 +6,7 @@
 // ============================================
 // CLAUDE SONNET 4.6 — THAI TRANSLATION SETUP
 // ============================================
-// Model ID: claude-sonnet-4-6
+// Model ID: claude-sonnet-5
 // Provider: Anthropic native API (https://api.anthropic.com/v1/messages)
 // Temperature: 0.1
 // Max Tokens: 5000
@@ -18,7 +18,7 @@
 // to the Llama fallback.
 
 const CONFIG = {
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   temperature: 0.1,
   max_tokens: 5000,
   provider: "anthropic"
@@ -208,5 +208,5 @@ async function translate(text, direction, apiKey) {
 
 ---
 
-*Model: claude-sonnet-4-6 via Anthropic native API*
+*Model: claude-sonnet-5 via Anthropic native API*
 *Role: PRIMARY — use whenever available*

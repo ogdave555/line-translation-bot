@@ -13,7 +13,7 @@
  *     content-type:      application/json
  *   Body:
  *     {
- *       model:       "claude-sonnet-4-6",
+ *       model:       "claude-sonnet-5",
  *       system:      "<system prompt as a top-level string>",
  *       messages:    [{ role: "user", content: [{ type: "text", text: "..." }] }],
  *       max_tokens:  5000,
@@ -45,7 +45,7 @@ export const ANTHROPIC_VERSION = "2023-06-01";
  * Native Anthropic model ID for Claude Sonnet 4.6.
  * NOTE: this is NOT the OpenRouter ID (`anthropic/claude-sonnet-4.6`).
  */
-export const ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-4-6";
+export const ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-5";
 
 /**
  * Maximum tokens we will request in a single Claude call.

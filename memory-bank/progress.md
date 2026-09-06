@@ -16,7 +16,7 @@
   - All 61 tests passed.
 
 - [x] **Model integration** (this commit)
-  - Primary: Claude Sonnet 4.6 via Anthropic API (claude-sonnet-4-6 model ID)
+  - Primary: Claude Sonnet 4.6 via Anthropic API (claude-sonnet-5 model ID)
   - Fallback: Llama 3.3 70B via OpenRouter (meta-llama/Llama-3.3-70B-Instruct)
   - Both use temperature 0.1, max_tokens 5000
   - Updated provider cascade from 3-tier to 2-tier (Claude → Llama)
@@ -141,7 +141,7 @@
 - [x] **Updated model-guides to reflect API routing**
   - `claude-quick-reference.md`: fixed provider from "OpenRouter" to
     "Anthropic native API", model ID from "anthropic/claude-sonnet-4.6"
-    to "claude-sonnet-4-6", API call example now uses
+    to "claude-sonnet-5", API call example now uses
     `https://api.anthropic.com/v1/messages` with `x-api-key` +
     `anthropic-version` headers, footer updated.
   - `llama-quick-reference.md`: added the kratom rule and the

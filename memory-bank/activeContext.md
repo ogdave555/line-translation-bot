@@ -21,7 +21,7 @@ instead of OpenRouter. Llama 3.3 70B stays on OpenRouter as the fallback.
 - **MODELS.CLAUDE = `anthropic/claude-sonnet-4.6`** retained as a legacy
   OpenRouter-style alias for test back-compat, but production code must
   not call OpenRouter for Claude. The new constant is
-  `ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-4-6"` in `src/core/anthropic.ts`.
+  `ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-5"` in `src/core/anthropic.ts`.
 
 ## Root cause we just fixed
 

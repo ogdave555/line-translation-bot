@@ -17,7 +17,7 @@ This folder contains everything needed to run Claude Sonnet 4.6 and Llama 3.3 70
 ```javascript
 // From: memory-bank/model-guides/claude-quick-reference.md
 const CONFIG = {
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   temperature: 0.1,
   max_tokens: 5000,
   provider: "anthropic"

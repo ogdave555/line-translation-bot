@@ -13,7 +13,7 @@ export const OPENROUTER_API_URL =
  *
  * Routing priority:
  * 1. Claude Sonnet 4.6 via the Anthropic native Messages API
- *    (CLAUDE_API_KEY, model id `claude-sonnet-4-6`).
+ *    (CLAUDE_API_KEY, model id `claude-sonnet-5`).
  * 2. Llama 3.3 70B via OpenRouter (OPENROUTER_API_KEY, fallback only).
  *
  * The legacy `MODELS.CLAUDE` OpenRouter-style string is kept as an alias
