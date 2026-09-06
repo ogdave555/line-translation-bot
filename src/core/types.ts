@@ -39,7 +39,7 @@ export interface TranslationRequest {
   sourceLanguage: 'en' | 'th';
   targetLanguage: 'en' | 'th';
   context?: Array<{ text: string; language: 'en' | 'th' }>;
-  testProvider?: 'claude' | 'gemini' | 'hermes';
+  testProvider?: 'claude' | 'llama';
   bypassExplicitCheck?: boolean;
 }
 
@@ -47,7 +47,7 @@ export interface TranslationResponse {
   success: boolean;
   translatedText: string;
   usedFallback: boolean;
-  provider: 'claude' | 'gemini' | 'hermes';
+  provider: 'claude' | 'llama';
   usedExplicit: boolean;
   error?: string;
 }
@@ -73,7 +73,8 @@ export interface LineEvent {
 export interface BotConfig {
   channelAccessToken: string;
   channelSecret: string;
-    openrouterApiKey: string;
+  claudeApiKey: string;
+  openrouterApiKey: string;
   openrouterSiteUrl?: string;
   openrouterSiteTitle?: string;
   maxMemoryMessages: number;

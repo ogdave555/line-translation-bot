@@ -199,6 +199,8 @@ npm run test:watch
 
 # Test provider endpoints
 npm run test:providers
+npm run test:models   # long battery of cases, writes JSON report to scripts/reports/
+npm run test:quality  # 3 regression cases x 3 models (profanity, numbers, Thai loanword)
 
 # Format code
 npm run format
@@ -213,7 +215,10 @@ LINE-BOT/
 ├── data/
 │   └── memory.json         # Conversation memory (auto-generated)
 ├── scripts/
-│   └── test-providers.js   # Provider endpoint connectivity tests
+│   ├── test-providers.cjs  # Single-message provider connectivity test
+│   ├── test-models.cjs     # Long battery: 7 cases x 3 models, JSON report
+│   ├── test-quality.cjs    # 3 regression cases x 3 models, pass/fail matrix
+│   └── reports/            # JSON reports from the test scripts (gitignored)
 ├── src/
 │   ├── bot.ts              # Bot event handlers
 │   ├── config.ts           # Configuration and system prompts

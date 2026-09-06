@@ -16,16 +16,33 @@
           "src/core/types.js"
         ]
       }
+    },
+    {
+      "src": "api/test-page.ts",
+      "use": "@vercel/node",
+      "config": {
+        "maxDuration": 30,
+        "includeFiles": [
+          "src/core/config.ts",
+          "src/core/config.js",
+          "src/core/utils.ts",
+          "src/core/utils.js",
+          "src/core/types.ts",
+          "src/core/types.js"
+        ]
+      }
     }
   ],
   "routes": [
     {
       "src": "/api/webhook",
       "dest": "/api/webhook.ts",
-      "methods": [
-        "GET",
-        "POST"
-      ]
+      "methods": ["GET", "POST"]
+    },
+    {
+      "src": "/api/test-page",
+      "dest": "/api/test-page.ts",
+      "methods": ["GET", "POST"]
     }
   ]
 }

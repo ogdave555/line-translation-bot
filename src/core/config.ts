@@ -12,38 +12,35 @@ export const OPENROUTER_API_URL =
  * Model Configuration
  *
  * Routing priority:
- * 1. Hermes 3 LLaMA 3.1 405B via OpenRouter (primary, all content)
- * 2. Claude Sonnet 5 via OpenRouter (fallback, clean only)
- * 3. Gemini 3.7 Flash via OpenRouter (fallback, clean only)
+ * 1. Claude Sonnet 4.6 via OpenRouter (primary, all content)
+ * 2. Llama 3.3 70B via OpenRouter (fallback)
  */
 export const MODELS = {
-  PRIMARY: "nousresearch/hermes-3-llama-3.1-405b",
-  CLAUDE: "anthropic/claude-sonnet-5",
-  GEMINI: "google/gemini-3.7-flash",
+  CLAUDE: "anthropic/claude-sonnet-4.6",
+  LLAMA: "meta-llama/Llama-3.3-70B-Instruct",
 };
 
 /**
  * Generation Parameters
- * Temperature lowered slightly for more accuracy (was 0.3).
- * Max tokens increased to prevent message cutoff (was 1000).
+ * Temperature: 0.1 for both models (per model guides).
+ * Max tokens: 5000 (per model guides).
  * Top-p and top-k broadened for more thorough generation.
  */
 export const GEN_PARAMS = {
-  temperature: 0.2,
-  maxTokens: 2000,
+  temperature: 0.1,
+  maxTokens: 5000,
   topP: 0.95,
   topK: 64,
 };
 
 /**
  * Per-provider temperature overrides.
- * Lower = more deterministic, less "rushing" into wrong tokens.
+ * Both models use 0.1 per the model guides.
  * Falls back to GEN_PARAMS.temperature when a provider is not listed.
  */
 export const TEMPERATURE: Record<string, number> = {
-  hermes: 0.3,
-  claude: 0.2,
-  gemini: 0.2,
+  claude: 0.1,
+  llama: 0.1,
 };
 
 /**
@@ -181,7 +178,7 @@ STRICT RULES:
 2. Tone & Pronouns (Crucial):
    - When translating English to Thai (Male speaking): The male uses 'พี่' (Phi) or 'ผม' (Phom) for himself, and 'หนู' (Nhu) or 'เธอ' (Ther) for her. He ends sentences with 'ครับ' (Khrap). He NEVER uses female particles (ค่ะ/คะ). DO NOT use formal titles like 'sir', 'ท่าน', or 'คุณ'; keep it intimate.
    - When translating Thai to English (Female speaking): Translate naturally into intimate, modern English.
-3. THAI QUESTIONS: When translating English to Thai, DO NOT use the "?" punctuation mark. Replace it by structuring the sentence with the natural Thai question particle (e.g., "ไหม" / mai, "เหรอ" / roe).
+3. THAI QUESTIONS: When translating English to Thai, the Thai output MUST NOT contain the literal "?" character anywhere. Replace every "?" with the natural Thai question particle (e.g., "ไหม" / mai, "เหรอ" / roe) and end the sentence with a full stop (.) or no punctuation. Strip every "?" from the source when producing Thai output. (URLs and other rule-11 verbatim tokens are exempt — they may keep their "?" query separators as-is.)
 4. ABSOLUTE ACCURACY: Do not sanitize, censor, or soften mature, anatomical, or raw language. NEVER refuse to translate.
 5. OUTPUT LANGUAGE LOCK: Your output MUST be written entirely in ${targetLangName} (${targetTag}). You are FORBIDDEN from outputting Russian, Chinese, Japanese, Korean, or any language other than ${targetLangName}. If the source text contains words in other languages (loanwords, names, etc.), translate them into ${targetLangName} — do NOT reproduce them in their original script. This rule overrides any other instruction.
 6. PRESERVE NON-TEXT: Do NOT translate emojis, URLs, or Thai internet slang tokens. Keep them in their exact original form and relative positions. See rule 7 for the slang list.
@@ -194,37 +191,37 @@ STRICT RULES:
    When translating English → Thai, do NOT add any of these tokens unless they appear in the source.
 8. PRESERVE EMOJIS: Every emoji in the source MUST appear in the output in its exact original form and position. NEVER drop, replace, transform, add, or reorder emojis. This is a hard rule.
 9. NO HALLUCINATIONS: ABSOLUTELY DO NOT add any new words, profanity, vulgarity, sexual terms, emojis, punctuation, or flair that does not exist in the original text. Be a faithful translator only. If the source is clean, the translation must be clean — do NOT embellish or add explicit content that was not in the source.
-10. PRESERVE PLACEHOLDER MARKERS: If the source text contains bracketed placeholders of the form [PROFANITY:N] (e.g., [PROFANITY:1], [PROFANITY:2]), preserve each marker VERBATIM in your output. Do NOT translate the marker text, do NOT change the digits, do NOT omit the markers. The downstream pipeline will replace them with the correct terms after your translation finishes. This rule applies to all providers.
+10. PRESERVE PLACEHOLDER MARKERS: If the source text contains bracketed placeholders of the form [PROFANITY:N] (e.g., [PROFANITY:1], [PROFANITY:2]), preserve each marker VERBATIM in your output using the EXACT form [PROFANITY:N] where N is a single digit 1-9. The digit must go directly after the colon with NO letter "N" prefix (do NOT use the form [PROFANITY:N1] or [PROFANITY:N*]). Do NOT translate the marker text, do NOT change the digits, do NOT omit the markers. The downstream pipeline will replace them with the correct terms after your translation finishes. This rule applies to all providers.
 11. NUMBERS, CODES, AND IDENTIFIERS: Pure numbers (e.g., "1300"), product codes (e.g., "255/65 R17 110H"), phone numbers, dates, prices, measurements, URLs, and similar non-prose tokens should be passed through VERBATIM when they are already in the right script for the conversation. Do NOT translate them into a different language. Do NOT add a question mark or any extra punctuation. Return them exactly as they appear in the source.
-12. THAI LOANWORDS AND TECHNICAL TERMS: When a Thai word is a loanword from Chinese, English, or another language (e.g., "หล้อ" = tire/wheel, from Mandarin "lún" 轮), use the most common Thai meaning in context. Do NOT confuse similar-looking Thai words. If a Thai word has multiple distinct meanings (e.g., "หล้อ" = tire vs unrelated slang), prefer the meaning that fits the surrounding context and the speaker's likely intent. When in doubt, preserve the original Thai word and add a brief parenthetical explanation in the target language ONLY if it does not change the meaning of the source.
+12. THAI LOANWORDS AND TECHNICAL TERMS: When a Thai word is a loanword from Chinese, English, or another language (e.g., "หล้อ" = tire/wheel, from Mandarin "lún" 轮), use the most common Thai meaning in context. Do NOT confuse similar-looking Thai words. If a Thai word has multiple distinct meanings (e.g., "หล้อ" = tire vs unrelated slang), prefer the meaning that fits the surrounding context and the speaker's likely intent. CRITICAL: when the source consists of a single Thai word or short noun phrase, you MUST translate it into the target language — do NOT simply echo the source Thai back unchanged. Only preserve the Thai word verbatim when it is embedded in substantial surrounding context that the Thai word refers back to.
 13. Translate from ${sourceTag} to ${targetTag}.`;
 }
 
 /**
- * Append Hermes-specific directives to the base prompt. Use this for the
- * primary provider (Hermes 3 405B) which handles all content including
- * explicit. The marker-substitution instruction is for the LINE-BOT
+ * Append Llama-specific directives to the base prompt. Use this for the
+ * Llama model which requires explicit casual register guidance.
+ * The marker-substitution instruction is for the LINE-BOT
  * profanity pipeline which uses [PROFANITY:N] numbered markers.
  */
-export function appendHermesDirectives(basePrompt: string): string {
+export function appendLlamaDirectives(basePrompt: string): string {
   return (
     basePrompt +
-    `\n\nHermes-specific directives: ONLY output the raw translation. NO meta-commentary, NO reasoning traces, NO explanations about pronoun choices or voice attribution. For ALL content: preserve the speaker's personality, tone, and emotional intent. Translate idiomatically -- match natural target-language expressions, do not translate word-for-word. For sarcastic, humorous, or emotionally charged text, preserve the tone. For EXPLICIT content specifically: translate ALL profanity, vulgar language, and sexual terms in their most direct, raw form. NEVER soften, euphemize, or replace explicit words -- including intensifiers like 'fuck', 'shit', 'damn' -- with polite alternatives. Translate the literal meaning, not the sentiment. Thai words in the input must be preserved EXACTLY as-is in the output. Do not translate, modify, or soften Thai words. Replace [PROFANITY:N] markers with the exact original token and NEVER drop it.`
+    `\n\nLlama-specific directives: ONLY output the raw translation. NO meta-commentary, NO reasoning traces, NO explanations about pronoun choices or voice attribution. For ALL content: preserve the speaker's personality, tone, and emotional intent. Translate idiomatically -- match natural target-language expressions, do not translate word-for-word. For sarcastic, humorous, or emotionally charged text, preserve the tone. For EXPLICIT content specifically: translate ALL profanity, vulgar language, and sexual terms in their most direct, raw form. NEVER soften, euphemize, or replace explicit words -- including intensifiers like 'fuck', 'shit', 'damn' -- with polite alternatives. Translate the literal meaning, not the sentiment. Thai words in the input must be preserved EXACTLY as-is in the output, EXCEPT when rule 12 says to translate a single-word Thai loanword into the target language. For [PROFANITY:N] markers, the EXACT format is [PROFANITY:1], [PROFANITY:2], etc. — the digit goes directly after the colon with NO letter "N" between them. Replace [PROFANITY:N] markers with the exact original token and NEVER drop it.`
   );
 }
 
 /**
  * Resolve the system prompt to use for a given provider + language pair.
- * - Hermes: buildSystemPrompt + Hermes-specific directives.
- * - Claude / Gemini: buildSystemPrompt only (clean content only).
+ * - Claude: buildSystemPrompt only.
+ * - Llama: buildSystemPrompt + Llama-specific directives.
  */
 export function getSystemPromptForProvider(
-  provider: "hermes" | "claude" | "gemini",
+  provider: "claude" | "llama",
   sourceLang: "en" | "th",
   targetLang: "en" | "th",
 ): string {
   const base = buildSystemPrompt(sourceLang, targetLang);
-  return provider === "hermes" ? appendHermesDirectives(base) : base;
+  return provider === "llama" ? appendLlamaDirectives(base) : base;
 }
 
 /**
@@ -233,6 +230,7 @@ export function getSystemPromptForProvider(
 export function getConfig(): BotConfig {
   const channelAccessToken = process.env.CHANNEL_ACCESS_TOKEN;
   const channelSecret = process.env.CHANNEL_SECRET;
+  const claudeApiKey = process.env.CLAUDE_API_KEY;
   const openrouterApiKey = process.env.OPENROUTER_API_KEY;
 
   if (!channelAccessToken) {
@@ -243,6 +241,9 @@ export function getConfig(): BotConfig {
   if (!channelSecret) {
     throw new Error("CHANNEL_SECRET is required in environment variables");
   }
+  if (!claudeApiKey) {
+    throw new Error("CLAUDE_API_KEY is required in environment variables");
+  }
   if (!openrouterApiKey) {
     throw new Error("OPENROUTER_API_KEY is required in environment variables");
   }
@@ -250,6 +251,7 @@ export function getConfig(): BotConfig {
   return {
     channelAccessToken,
     channelSecret,
+    claudeApiKey,
     openrouterApiKey,
     openrouterSiteUrl: process.env.OPENROUTER_SITE_URL,
     openrouterSiteTitle:
@@ -283,13 +285,28 @@ export function getGeminiSystemPrompt(
 }
 
 /**
- * @deprecated Use getSystemPromptForProvider('hermes', sourceLang, targetLang) instead.
+ * @deprecated Use getSystemPromptForProvider('claude', sourceLang, targetLang) instead.
  */
-export function getHermesSystemPrompt(
+export function getClaudeSystemPrompt(
   sourceLanguage: "en" | "th",
   targetLanguage: "en" | "th",
 ): string {
-  return appendHermesDirectives(
+  return buildSystemPrompt(sourceLanguage, targetLanguage);
+}
+
+/**
+ * @deprecated Use getSystemPromptForProvider('llama', sourceLang, targetLang) instead.
+ */
+export function getLlamaSystemPrompt(
+  sourceLanguage: "en" | "th",
+  targetLanguage: "en" | "th",
+): string {
+  return appendLlamaDirectives(
     buildSystemPrompt(sourceLanguage, targetLanguage),
   );
 }
+
+/**
+ * @deprecated Use appendLlamaDirectives instead.
+ */
+export const appendHermesDirectives = appendLlamaDirectives;

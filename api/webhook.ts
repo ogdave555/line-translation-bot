@@ -150,11 +150,12 @@ function maskProfanity(text: string): {
 async function translateWithPipeline(
   text: string,
   targetLang: string,
+  claudeKey: string,
   openrouterKey: string,
 ): Promise<string> {
   const isExplicit = containsExplicitContent(text);
   if (!isExplicit) {
-    const result = await translate(text, targetLang, openrouterKey);
+    const result = await translate(text, targetLang, claudeKey, openrouterKey);
     if (!result.ok) return getErrorMessage(targetLang);
     return result.text;
   }
@@ -162,7 +163,7 @@ async function translateWithPipeline(
   const { maskedText, profanityTokens } = maskProfanity(text);
 
   // Translate masked (clean) text through the cascade
-  const maskedResult = await translate(maskedText, targetLang, openrouterKey);
+  const maskedResult = await translate(maskedText, targetLang, claudeKey, openrouterKey);
 
   if (!maskedResult.ok) return getErrorMessage(targetLang); // cascade failed
 
@@ -177,22 +178,20 @@ async function translateWithPipeline(
     }
   }
 
-  // Translate each profanity token individually through Hermes
+  // Translate each profanity token individually through Claude (primary model handles all content)
   const sourceLangCode = getSourceLangCode(text);
   const targetLangCode = getTargetLangCode(text);
-  const hermesSystemContent = appendHermesDirectives(
-    buildSystemPrompt(sourceLangCode, targetLangCode),
-  );
+  const claudeSystemContent = buildSystemPrompt(sourceLangCode, targetLangCode);
 
   const controller = new AbortController();
   const pipelineTimeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const translatedToken = await callOpenRouter(
       profanityTokens.join(" "),
-      hermesSystemContent,
-      MODELS.PRIMARY,
-      "hermes",
-      openrouterKey,
+      claudeSystemContent,
+      MODELS.CLAUDE,
+      "claude",
+      claudeKey,
       controller,
     );
 
@@ -204,7 +203,7 @@ async function translateWithPipeline(
     });
     return finalText;
   } catch (e: any) {
-    console.error("Pipeline Hermes unmask failed:", e.message);
+    console.error("Pipeline Claude unmask failed:", e.message);
     return finalText;
   } finally {
     clearTimeout(pipelineTimeoutId);
@@ -219,18 +218,19 @@ async function translateWithPipeline(
 async function translateChunked(
   text: string,
   targetLang: string,
+  claudeKey: string,
   openrouterKey: string,
 ): Promise<string> {
   const chunks = splitIntoChunks(text);
   if (chunks.length === 1) {
     // Short message — single call, no chunking overhead
-    return translateWithPipeline(text, targetLang, openrouterKey);
+    return translateWithPipeline(text, targetLang, claudeKey, openrouterKey);
   }
 
   // Translate all chunks in parallel
   const results = await Promise.all(
     chunks.map((chunk) =>
-      translateWithPipeline(chunk, targetLang, openrouterKey),
+      translateWithPipeline(chunk, targetLang, claudeKey, openrouterKey),
     ),
   );
 
@@ -249,8 +249,8 @@ async function translateChunked(
 
 /**
  * Build the system prompt + model for a given chunk.
- * - Hermes 3 (405B) is the primary provider for ALL content (clean + explicit).
- * - Claude and Gemini serve as clean-content fallbacks.
+ * - Claude Sonnet 4.6 is the primary provider for ALL content.
+ * - Llama 3.3 70B serves as fallback.
  * - Per-provider temperature is resolved via getTemperatureForProvider().
  */
 function buildRouting(
@@ -259,15 +259,15 @@ function buildRouting(
 ): {
   model: string;
   systemContent: string;
-  provider: "hermes" | "claude" | "gemini";
+  provider: "claude" | "llama";
 } {
   const sourceLangCode = getSourceLangCode(text);
   const targetLangCode = getTargetLangCode(text);
   const base = buildSystemPrompt(sourceLangCode, targetLangCode);
   return {
-    model: MODELS.PRIMARY,
-    systemContent: appendHermesDirectives(base),
-    provider: "hermes",
+    model: MODELS.CLAUDE,
+    systemContent: base,
+    provider: "claude",
   };
 }
 
@@ -275,7 +275,7 @@ async function callOpenRouter(
   text: string,
   systemContent: string,
   model: string,
-  provider: "hermes" | "claude" | "gemini",
+  provider: "claude" | "llama",
   apiKey: string,
   controller: AbortController,
 ): Promise<string> {
@@ -334,9 +334,8 @@ interface TranslateResult {
 
 /**
  * Main translate function with routing:
- * 1. Hermes 3 (OpenRouter, primary for ALL content — clean + explicit)
- * 2. Fallback → Claude Sonnet 5 (OpenRouter, clean content only)
- * 3. Second fallback → Gemini 2.5 Pro (OpenRouter, clean content only)
+ * 1. Claude Sonnet 4.6 (CLAUDE_API_KEY, primary for ALL content)
+ * 2. Fallback → Llama 3.3 70B (OPENROUTER_API_KEY)
  *
  * If any provider returns output containing Cyrillic / CJK characters,
  * WRONG_LANG_OUTPUT_REGEX rejects the response and the cascade continues.
@@ -347,6 +346,7 @@ interface TranslateResult {
 async function translate(
   text: string,
   targetLang: string,
+  claudeKey: string,
   openrouterKey: string,
 ): Promise<TranslateResult> {
   if (!isValidString(text)) {
@@ -359,62 +359,39 @@ async function translate(
   try {
     const { model, systemContent, provider } = buildRouting(text, targetLang);
 
-    // Primary: Hermes 3 for ALL content (clean + explicit)
+    // Primary: Claude Sonnet 4.6 via CLAUDE_API_KEY
     try {
       const out = await callOpenRouter(
         text,
         systemContent,
         model,
         provider,
-        openrouterKey,
+        claudeKey,
         controller,
       );
       return { text: out, ok: true };
     } catch (orError: any) {
-      console.error("Hermes (primary) failed:", orError.message);
+      console.error("Claude (primary) failed:", orError.message);
     }
 
-    // Claude and Gemini only handle clean content
-    const isExplicit = containsExplicitContent(text);
-    if (isExplicit) {
-      console.error(
-        "Hermes failed for explicit content, no clean-content fallback available",
-      );
-      return { text, ok: false };
-    }
-
+    // Fallback: Llama 3.3 70B via OPENROUTER_API_KEY
     const sourceLangCode = getSourceLangCode(text);
     const targetLangCode = getTargetLangCode(text);
     const basePrompt = buildSystemPrompt(sourceLangCode, targetLangCode);
+    const llamaPrompt = appendHermesDirectives(basePrompt);
 
-    // Fallback: Claude Sonnet 5 via OpenRouter
     try {
       const out = await callOpenRouter(
         text,
-        basePrompt,
-        MODELS.CLAUDE,
-        "claude",
+        llamaPrompt,
+        MODELS.LLAMA,
+        "llama",
         openrouterKey,
         controller,
       );
       return { text: out, ok: true };
-    } catch (claudeError: any) {
-      console.error("Claude fallback failed:", claudeError.message);
-    }
-
-    // Second fallback: Gemini 2.5 Pro via OpenRouter
-    try {
-      const out = await callOpenRouter(
-        text,
-        basePrompt,
-        MODELS.GEMINI,
-        "gemini",
-        openrouterKey,
-        controller,
-      );
-      return { text: out, ok: true };
-    } catch (geminiError: any) {
-      console.error("Gemini failed:", geminiError.message);
+    } catch (llamaError: any) {
+      console.error("Llama fallback failed:", llamaError.message);
     }
 
     console.error("All translation providers failed");
@@ -431,9 +408,10 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const channelSecret = process.env.CHANNEL_SECRET || "";
     const channelAccessToken = process.env.CHANNEL_ACCESS_TOKEN || "";
+    const claudeKey = process.env.CLAUDE_API_KEY || "";
     const openrouterKey = process.env.OPENROUTER_API_KEY || "";
 
-    if (!channelSecret || !channelAccessToken || !openrouterKey) {
+    if (!channelSecret || !channelAccessToken || !claudeKey || !openrouterKey) {
       return new Response(JSON.stringify({ error: "Config error" }), {
         status: 500,
       });
@@ -490,6 +468,7 @@ export async function POST(req: Request): Promise<Response> {
       const translated = await translateChunked(
         text,
         targetLang,
+        claudeKey,
         openrouterKey,
       );
 

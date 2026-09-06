@@ -15,6 +15,14 @@
   - Mirrored all changes in `api/webhook.ts` (Vercel serverless function)
   - All 61 tests passed.
 
+- [x] **Model integration** (this commit)
+  - Primary: Claude Sonnet 4.6 via Anthropic API (claude-sonnet-4-6 model ID)
+  - Fallback: Llama 3.3 70B via OpenRouter (meta-llama/Llama-3.3-70B-Instruct)
+  - Both use temperature 0.1, max_tokens 5000
+  - Updated provider cascade from 3-tier to 2-tier (Claude → Llama)
+  - appendLlamaDirectives() renamed from appendHermesDirectives
+  - Smoke test passes for both models
+
 - [x] **Translation quality fixes** (this commit)
   - **Issue 1 (profanity marker leak)**: added rule 10 "PRESERVE
     PLACEHOLDER MARKERS" to `buildSystemPrompt` so Claude and Gemini
@@ -64,3 +72,4 @@
   because models occasionally ignore prompt instructions. A future
   improvement would be to make the marker format less translateable
   (e.g. `<<<P1>>>` instead of `[PROFANITY:1]`).
+

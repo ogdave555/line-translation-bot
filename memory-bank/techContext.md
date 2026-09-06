@@ -9,33 +9,36 @@
   No AI SDK wrapper.
 - **LINE SDK**: `@line/bot-sdk` for replying to messages.
 - **Config**: `dotenv` for local `.env` loading.
-- **Tests**: `node:test` runner via `tsx --test`.
+
+## AI Models
+
+- **Primary**: Claude Sonnet 4.6 (`anthropic/claude-sonnet-4.6`) via CLAUDE_API_KEY
+- **Fallback**: Llama 3.3 70B (`meta-llama/Llama-3.3-70B-Instruct`) via OPENROUTER_API_KEY
+- **Temperature**: 0.1 for both models (per model guides)
+- **Max tokens**: 5000 (per model guides)
 
 ## Directory layout
 
 ```
 api/
   webhook.ts          # Vercel serverless function (POST + GET)
+  test-page.ts       # Test page for the API
 data/
-  memory.json         # Conversation memory (auto-generated, gitignored)
-scripts/
-  test-providers.js   # Connectivity test for the three models
+  memory.json        # Conversation memory (auto-generated, gitignored)
 src/
   core/
-    config.ts         # MODELS, GEN_PARAMS, TEMPERATURE, WRONG_LANG_OUTPUT_REGEX,
-                      # buildSystemPrompt, appendHermesDirectives,
-                      # getSystemPromptForProvider, USER_PROFILES, getConfig
-    types.ts          # BotConfig, TranslationRequest, TranslationResponse, ...
-    utils.ts          # Language detection, emoji/URL helpers
+    config.ts       # MODELS, GEN_PARAMS, TEMPERATURE, WRONG_LANG_OUTPUT_REGEX,
+                    # buildSystemPrompt, appendLlamaDirectives,
+                    # getSystemPromptForProvider, USER_PROFILES, getConfig
+    types.ts        # BotConfig, TranslationRequest, TranslationResponse, ...
+    utils.ts        # Language detection, emoji/URL helpers
   translation/
-    translator.ts     # translate / runProvider cascade (Hermes → Claude → Gemini)
-    memory.ts         # Per-group conversation memory (file-backed)
+    translator.ts    # translate / runProvider cascade (Claude → Llama)
+    memory.ts        # Per-group conversation memory (file-backed)
   bot/
-    bot.ts            # Bot class (used by tests)
-    index.ts          # Local entry point
-tests/
-  translator.test.ts
-  webhook.test.ts
+    bot.ts          # Bot class
+    index.ts        # Local entry point
+model-guides/        # Model configuration guides and prompts
 ```
 
 ## Language codes
@@ -52,7 +55,8 @@ Required env vars (see `.env.example`):
 
 - `CHANNEL_ACCESS_TOKEN`
 - `CHANNEL_SECRET`
-- `OPENROUTER_API_KEY`
+- `CLAUDE_API_KEY` (for Claude Sonnet 4.6)
+- `OPENROUTER_API_KEY` (for Llama 3.3 70B)
 
 Optional:
 

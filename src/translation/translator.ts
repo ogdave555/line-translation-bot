@@ -1,14 +1,13 @@
 /**
  * Translation Engine
- * Handles translation using OpenRouter with a three-tier provider cascade:
- *   1. Hermes 3 (405B) — primary provider for ALL content (clean + explicit)
- *   2. Claude Sonnet 5 — fallback for clean content only (or when bypassExplicitCheck is set)
- *   3. Gemini 2.5 Pro   — second fallback for clean content
+ * Handles translation using OpenRouter with a two-tier provider cascade:
+ *   1. Claude Sonnet 4.6 — primary provider for ALL content (via CLAUDE_API_KEY)
+ *   2. Llama 3.3 70B — fallback provider (via OPENROUTER_API_KEY)
  *
  * Language parameters:
  *   - Internal language codes: 'en' | 'th'
  *   - Prompt-boundary codes (BCP-47): 'en-GB' | 'th-TH' (set by buildSystemPrompt)
- *   - Per-provider temperature: 0.3 for Hermes, 0.2 for Claude/Gemini
+ *   - Per-provider temperature: 0.1 for both (per model guides)
  *   - WRONG_LANG_OUTPUT_REGEX: rejects Cyrillic/CJK leakage in th-TH/en-GB output,
  *     falling through to the next provider instead of returning bad text.
  */
@@ -95,7 +94,7 @@ function detectLanguage(text: string): "en" | "th" {
  * to the next provider instead of returning bad output.
  */
 async function runProvider(
-  provider: "hermes" | "claude" | "gemini",
+  provider: "claude" | "llama",
   text: string,
   sourceLanguage: "en" | "th",
   targetLanguage: "en" | "th",
@@ -104,11 +103,9 @@ async function runProvider(
   siteTitle?: string,
 ): Promise<string> {
   const model =
-    provider === "hermes"
-      ? MODELS.PRIMARY
-      : provider === "claude"
-        ? MODELS.CLAUDE
-        : MODELS.GEMINI;
+    provider === "claude"
+      ? MODELS.CLAUDE
+      : MODELS.LLAMA;
 
   const prompt = getSystemPromptForProvider(
     provider,
@@ -125,7 +122,6 @@ async function runProvider(
     siteTitle,
   );
 
-  if (!raw) throw new Error(`${provider} returned empty response`);
   if (WRONG_LANG_OUTPUT_REGEX.test(raw)) {
     throw new Error(
       `${provider} output contained wrong-script characters (Cyrillic/CJK)`,
@@ -138,9 +134,8 @@ async function runProvider(
  * Main translation function with provider cascade and fallback support.
  *
  * Routing logic:
- * 1. Hermes 3 (405B) via OpenRouter — primary provider for ALL content (clean + explicit)
- * 2. Fallback → Claude Sonnet 5 (OpenRouter, clean content only unless bypassExplicitCheck)
- * 3. Second fallback → Gemini 2.5 Pro (OpenRouter, clean content only unless bypassExplicitCheck)
+ * 1. Claude Sonnet 4.6 via CLAUDE_API_KEY — primary provider for ALL content
+ * 2. Fallback → Llama 3.3 70B via OPENROUTER_API_KEY
  *
  * When a provider returns output containing Cyrillic / CJK (i.e. wrong script),
  * the WRONG_LANG_OUTPUT_REGEX guard rejects it and the cascade continues to
@@ -191,68 +186,33 @@ export async function translate(
     }
   }
 
-  // Primary: Hermes 3 405B for ALL content (clean + explicit)
-  try {
-    const translatedText = await runProvider(
-      "hermes",
-      text,
-      sourceLanguage,
-      targetLanguage,
-      config.openrouterApiKey,
-      config.openrouterSiteUrl,
-      config.openrouterSiteTitle,
-    );
-    return {
-      success: true,
-      translatedText,
-      usedFallback: false,
-      provider: "hermes",
-      usedExplicit: isExplicit,
-    };
-  } catch (error: any) {
-    console.error("Primary translation (Hermes) failed:", error.message);
-    // Fall through to fallback providers
-  }
-
-  // Claude and Gemini only handle clean content (unless bypassExplicitCheck is set)
-  if (isExplicit && !bypassExplicitCheck) {
-    return {
-      success: false,
-      translatedText: "",
-      usedFallback: false,
-      provider: "hermes",
-      usedExplicit: true,
-      error:
-        "Hermes failed and explicit content cannot be routed to Claude/Gemini",
-    };
-  }
-
-  // Fallback: Claude Sonnet 5 via OpenRouter
+  // Primary: Claude Sonnet 4.6 via CLAUDE_API_KEY
   try {
     const translatedText = await runProvider(
       "claude",
       text,
       sourceLanguage,
       targetLanguage,
-      config.openrouterApiKey,
+      config.claudeApiKey,
       config.openrouterSiteUrl,
       config.openrouterSiteTitle,
     );
     return {
       success: true,
       translatedText,
-      usedFallback: true,
+      usedFallback: false,
       provider: "claude",
-      usedExplicit: false,
+      usedExplicit: isExplicit,
     };
   } catch (error: any) {
-    console.error("Claude fallback failed:", error.message);
+    console.error("Primary translation (Claude) failed:", error.message);
+    // Fall through to Llama fallback
   }
 
-  // Second fallback: Gemini 3.7 Flash via OpenRouter
+  // Fallback: Llama 3.3 70B via OPENROUTER_API_KEY
   try {
     const translatedText = await runProvider(
-      "gemini",
+      "llama",
       text,
       sourceLanguage,
       targetLanguage,
@@ -264,17 +224,17 @@ export async function translate(
       success: true,
       translatedText,
       usedFallback: true,
-      provider: "gemini",
+      provider: "llama",
       usedExplicit: false,
     };
-  } catch (geminiError: any) {
+  } catch (llamaError: any) {
     return {
       success: false,
       translatedText: "",
       usedFallback: false,
-      provider: "gemini",
+      provider: "llama",
       usedExplicit: false,
-      error: geminiError.message,
+      error: llamaError.message,
     };
   }
 }
@@ -395,24 +355,24 @@ export async function translateWithProfanityPipeline(
     }
   }
 
-  // Translate each profanity token individually through Hermes
+  // Translate each profanity token individually through Claude (primary model handles all content)
   const config = getConfig();
-  const hermesPrompt = getSystemPromptForProvider(
-    "hermes",
+  const claudePrompt = getSystemPromptForProvider(
+    "claude",
     sourceLanguage,
     targetLanguage,
   );
   const translatedToken = await callOpenRouter(
     profanityTokens.join(" "),
-    hermesPrompt,
-    config.openrouterApiKey,
-    MODELS.PRIMARY,
-    "hermes",
+    claudePrompt,
+    config.claudeApiKey,
+    MODELS.CLAUDE,
+    "claude",
     config.openrouterSiteUrl,
     config.openrouterSiteTitle,
   );
 
-  // Split the Hermes result into individual token translations
+  // Split the Claude result into individual token translations
   const translatedTokens = translatedToken.split(/\s+/);
 
   // Reassemble: replace each [PROFANITY:N] marker with its translated token
@@ -427,7 +387,7 @@ export async function translateWithProfanityPipeline(
     success: true,
     translatedText: finalText,
     usedFallback: maskedResult.usedFallback,
-    provider: "hermes",
+    provider: maskedResult.provider,
     usedExplicit: true,
   };
 }
@@ -445,7 +405,7 @@ export async function translateWithProfanityPipelineAndMemory(
   translatedText?: string;
   error?: string;
   usedFallback?: boolean;
-  provider?: "claude" | "gemini" | "hermes";
+  provider?: "claude" | "llama";
   usedExplicit?: boolean;
 }> {
   addToMemory(groupId, userId, text);
@@ -479,7 +439,7 @@ export async function translateWithMemory(
   userId: string,
   text: string,
   options?: {
-    testProvider?: "claude" | "gemini" | "hermes";
+    testProvider?: "claude" | "llama";
     bypassExplicitCheck?: boolean;
   },
 ): Promise<{
@@ -487,7 +447,7 @@ export async function translateWithMemory(
   translatedText?: string;
   error?: string;
   usedFallback?: boolean;
-  provider?: "claude" | "gemini" | "hermes";
+  provider?: "claude" | "llama";
   usedExplicit?: boolean;
 }> {
   addToMemory(groupId, userId, text);
