@@ -4,7 +4,7 @@
  */
 
 import { LineBotClient } from '@line/bot-sdk';
-import { translateWithMemory } from '../translation/translator';
+import { translateWithMemory } from '../core/translate.js';
 import { shouldSkipMessage, cleanTextForTranslation } from '../core/utils';
 import type { LineEvent } from '../core/types';
 
@@ -13,7 +13,7 @@ import type { LineEvent } from '../core/types';
  */
 export class Bot {
   private client: LineBotClient;
-  
+
   constructor(channelAccessToken: string) {
     this.client = LineBotClient.fromChannelAccessToken({ channelAccessToken });
   }
@@ -43,17 +43,17 @@ export class Bot {
 
     // Clean text (remove URLs, keep emojis)
     const cleanedText = cleanTextForTranslation(text);
-    
+
     if (!cleanedText.trim()) {
       return;
     }
 
     // Perform translation with memory
     const result = await translateWithMemory(groupId, userId, cleanedText);
-    
+
     if (!result.success) {
       console.error('Translation failed:', result.error);
-      
+
       // Send error message to group
       if (event.replyToken) {
         await this.replyMessage(event.replyToken, 'Sorry, I had trouble translating that message.');

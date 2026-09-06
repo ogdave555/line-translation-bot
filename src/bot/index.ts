@@ -1,14 +1,16 @@
 /**
  * LINE Translation Bot - Main Entry Point
- * 
+ *
  * A LINE bot that automatically translates English to Thai and vice versa.
- * 
+ *
  * Features:
  * - Personalized translation based on user profiles
  * - Conversation memory for context
    * - Profanity preservation (not filtering)
-   * - Routing: Hermes 3 LLaMA 3.1 405B (primary, OpenRouter) → Claude Sonnet 5 (fallback, OpenRouter) → Gemini 3.7 Flash (fallback, OpenRouter)
- * - Skips non-text messages (images, videos, URLs, emojis)
+   * - Routing: Claude Sonnet 4.6 via Anthropic native API (primary) → Llama 3.3 70B via OpenRouter (fallback)
+   * - Skips non-text messages (images, videos, URLs, emojis)
+ *
+ * Core cascade logic is shared from src/core/translate.ts.
  */
 
 import { getConfig } from '../core/config.js';
@@ -24,11 +26,11 @@ console.log('✅ Memory system initialized');
 
 // Export bot creation function for Vercel
 export { createBot } from './bot.js';
-export { translate, translateWithMemory } from '../translation/translator.js';
+export { translate, translateWithMemory } from '../core/translate.js';
 export { getConfig } from '../core/config.js';
 
 // For local development testing
-if (import.meta.url.replace('file://', '') === import.meta.dirname + '/index.ts' || 
+if (import.meta.url.replace('file://', '') === import.meta.dirname + '/index.ts' ||
     import.meta.url === 'node:process') {
   console.log(`
 ========================================

@@ -1,19 +1,20 @@
 import { LineBotClient } from "@line/bot-sdk";
 import {
-  englishExplicit,
-  thaiExplicit,
   containsExplicitContent,
-  MODELS,
-  GEN_PARAMS,
-  getTemperatureForProvider,
-  OPENROUTER_API_URL,
-  WRONG_LANG_OUTPUT_REGEX,
-  validateOutputScript,
-  buildSystemPrompt,
   getSystemPromptForProvider,
 } from "../src/core/config.js";
-import { hasThaiText, cleanTextForTranslation, isStandaloneThaiLaughter } from "../src/core/utils.js";
+import {
+  hasThaiText,
+  cleanTextForTranslation,
+  isStandaloneThaiLaughter,
+} from "../src/core/utils.js";
 import { callAnthropic, ANTHROPIC_MAX_TOKENS } from "../src/core/anthropic.js";
+import {
+  runProvider,
+  maskProfanity,
+  getTargetLangCode,
+  getSourceLangCode,
+} from "../src/core/translate.js";
 
 interface LineEvent {
   replyToken?: string;
@@ -37,23 +38,11 @@ const TIMEOUT_MS = 25000;
 const CHUNK_THRESHOLD = 600; // Split messages above this length into independent chunks
 const MAX_REPLY_CHARS = 4500; // LINE text message limit (safe buffer under 5000)
 
-// ── Language code helpers (mirrors src/translation/translator.ts) ───────────
-// Internal codes: 'en' | 'th'
-// Prompt-boundary codes (BCP-47): 'en-GB' | 'th-TH'
-
-function getTargetLangCode(text: string): "en" | "th" {
-  return hasThaiText(text) ? "en" : "th";
-}
-
-function getSourceLangCode(text: string): "en" | "th" {
-  return hasThaiText(text) ? "th" : "en";
-}
+// ── Language code helpers ───────────────────────────────────
 
 function isTargetEnglish(text: string): boolean {
   return hasThaiText(text);
 }
-
-// ── Helper wrappers (imported from src/core to avoid duplication) ──
 
 function isValidString(str: string | undefined): str is string {
   return typeof str === "string" && str.length > 0 && str.length <= 8000;
@@ -112,38 +101,73 @@ function getErrorMessage(targetLang: string): string {
 }
 
 /**
- * Profanity preprocessing pipeline — masks explicit content before translation.
- * Ensures Claude/Gemini never see profanity even as fallback providers.
+ * Translate a single piece of text through the cascade, returning a
+ * user-facing error message string if every provider failed.
+ *
+ * Numbers, codes, and other untranslatable tokens (e.g. "1300", "255/65 R17
+ * 110H") are returned VERBATIM by the model — we treat that as a successful
+ * translation, not a failure, because the model legitimately has nothing to
+ * translate.
  */
-function maskProfanity(text: string): {
-  maskedText: string;
-  profanityTokens: string[];
-} {
-  const tokens: string[] = [];
-
-  // English: token-by-token masking
-  const words = text.split(/(\s+)/);
-  const maskedWords = words.map((word) => {
-    if (englishExplicit.test(word)) {
-      tokens.push(word);
-      return `[PROFANITY:${tokens.length}]`;
-    }
-    return word;
-  });
-
-  let maskedText = maskedWords.join("");
-
-  // Thai: regex-replace explicit terms with markers
-  let thaiMatch: RegExpExecArray | null;
-  const thaiRegex = new RegExp(thaiExplicit.source, "g");
-  while ((thaiMatch = thaiRegex.exec(maskedText)) !== null) {
-    const token = thaiMatch[0];
-    tokens.push(token);
-    maskedText = maskedText.replace(token, `[PROFANITY:${tokens.length}]`);
-    thaiRegex.lastIndex = 0;
+async function translate(
+  text: string,
+  targetLang: string,
+  claudeKey: string,
+  openrouterKey: string,
+): Promise<{ text: string; ok: boolean }> {
+  if (!isValidString(text)) {
+    return { text, ok: false };
   }
 
-  return { maskedText, profanityTokens: tokens };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const sourceLangCode = getSourceLangCode(text);
+    const targetLangCode = getTargetLangCode(text);
+
+    // Primary: Claude Sonnet 4.6 via the Anthropic native Messages API.
+    // This replaces the previous (broken) OpenRouter-for-Claude path,
+    // which silently fell through to Llama in production because
+    // OpenRouter rejects Anthropic-format API keys with HTTP 401.
+    try {
+      const out = await runProvider(
+        "claude",
+        text,
+        sourceLangCode,
+        targetLangCode,
+        claudeKey,
+      );
+      return { text: out, ok: true };
+    } catch (anthropicError: any) {
+      console.error("Anthropic (primary) failed:", anthropicError.message);
+    }
+
+    // Fallback: Llama 3.3 70B via OpenRouter. Uses the shorter,
+    // Llama-tuned prompt from model-guides/llama-quick-reference.md (rather
+    // than the full 12-rule Claude prompt), plus the production safety
+    // appendix (OUTPUT LANGUAGE LOCK + placeholder marker preservation).
+    try {
+      const out = await runProvider(
+        "llama",
+        text,
+        sourceLangCode,
+        targetLangCode,
+        openrouterKey,
+      );
+      return { text: out, ok: true };
+    } catch (llamaError: any) {
+      console.error("Llama fallback failed:", llamaError.message);
+    }
+
+    console.error("All translation providers failed");
+    return { text, ok: false };
+  } catch (e: any) {
+    console.error("Translation error:", e.message);
+    return { text, ok: false };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**
@@ -189,7 +213,7 @@ async function translateWithPipeline(
   // (Claude is the primary model and handles ALL content, including explicit).
   const sourceLangCode = getSourceLangCode(text);
   const targetLangCode = getTargetLangCode(text);
-  const claudeSystemContent = buildSystemPrompt(sourceLangCode, targetLangCode);
+  const claudeSystemContent = getSystemPromptForProvider("claude", sourceLangCode, targetLangCode);
 
   const controller = new AbortController();
   const pipelineTimeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -199,7 +223,7 @@ async function translateWithPipeline(
       claudeSystemContent,
       claudeKey,
       {
-        temperature: getTemperatureForProvider("claude"),
+        temperature: 0.1,
         maxTokens: ANTHROPIC_MAX_TOKENS,
         signal: controller.signal,
       },
@@ -255,182 +279,6 @@ async function translateChunked(
   return joined.length > MAX_REPLY_CHARS
     ? joined.substring(0, MAX_REPLY_CHARS) + "..."
     : joined;
-}
-
-/**
- * Build the system prompt + model for a given chunk.
- * - Claude Sonnet 4.6 is the primary provider for ALL content.
- * - Llama 3.3 70B serves as fallback.
- * - Per-provider temperature is resolved via getTemperatureForProvider().
- */
-/**
- * Build the system prompt for a given chunk.
- * - Claude Sonnet 4.6 is the primary provider for ALL content.
- * - Llama 3.3 70B serves as fallback.
- * - Per-provider temperature is resolved via getTemperatureForProvider().
- *
- * NOTE: We no longer need to return a model id here. Claude uses the
- * native Anthropic API (model baked into callAnthropic()), and Llama uses
- * MODELS.LLAMA inside the OpenRouter call.
- */
-function buildRouting(
-  text: string,
-): {
-  systemContent: string;
-} {
-  const sourceLangCode = getSourceLangCode(text);
-  const targetLangCode = getTargetLangCode(text);
-  const base = buildSystemPrompt(sourceLangCode, targetLangCode);
-  return { systemContent: base };
-}
-
-async function callOpenRouter(
-  text: string,
-  systemContent: string,
-  model: string,
-  provider: "claude" | "llama",
-  apiKey: string,
-  controller: AbortController,
-): Promise<string> {
-  const res = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://line-translation-bot.vercel.app",
-      "X-OpenRouter-Title": "LINE Translation Bot",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemContent },
-        { role: "user", content: text },
-      ],
-      temperature: getTemperatureForProvider(provider),
-      top_p: GEN_PARAMS.topP,
-      max_tokens: GEN_PARAMS.maxTokens,
-      moderation: "false",
-    }),
-    signal: controller.signal,
-  });
-
-  if (!res.ok) {
-    throw new Error(`OpenRouter HTTP ${res.status}`);
-  }
-
-  const data = (await res.json()) as any;
-  const content = data.choices?.[0]?.message?.content;
-  if (!content || typeof content !== "string") {
-    throw new Error("No content in OpenRouter response");
-  }
-  const trimmed = content.trim();
-  // Safety guard: reject Cyrillic / CJK leakage (wrong script for en-GB / th-TH)
-  if (WRONG_LANG_OUTPUT_REGEX.test(trimmed)) {
-    throw new Error(
-      "OpenRouter output contained wrong-script characters (Cyrillic/CJK)",
-    );
-  }
-  // Catch hallucinated words in the wrong script that the Cyrillic/CJK
-  // guard misses (e.g. "yokewise" embedded in Thai). Legitimate preserved
-  // tokens (names, codes, URLs, [PROFANITY:N] markers) are allowed
-  // through because they appear in the source.
-  const scriptError = validateOutputScript(trimmed, text, getTargetLangCode(text));
-  if (scriptError) {
-    throw new Error(`OpenRouter output failed script validation: ${scriptError}`);
-  }
-  return trimmed;
-}
-
-
-/**
- * Result of a single translation call. Wrapping the output in an object
- * lets callers distinguish "model returned the same text because the input
- * was untranslatable" (e.g. "1300", "255/65 R17 110H") from "all providers
- * failed and we echoed the input as a fallback" — without this distinction
- * the user-facing error message is triggered for legitimate pass-throughs.
- */
-interface TranslateResult {
-  text: string;
-  ok: boolean;
-}
-
-/**
- * Main translate function with routing:
- * 1. Claude Sonnet 4.6 via the Anthropic native Messages API
- *    (CLAUDE_API_KEY, model `claude-sonnet-4-6`) — primary for ALL content.
- * 2. Fallback → Llama 3.3 70B via OpenRouter (OPENROUTER_API_KEY).
- *
- * If any provider returns output containing Cyrillic / CJK characters,
- * WRONG_LANG_OUTPUT_REGEX rejects the response and the cascade continues.
- * Returns `{ text, ok: true }` on success (text may equal the input for
- * untranslatable tokens) and `{ text, ok: false }` when every provider
- * failed.
- */
-async function translate(
-  text: string,
-  targetLang: string,
-  claudeKey: string,
-  openrouterKey: string,
-): Promise<TranslateResult> {
-  if (!isValidString(text)) {
-    return { text, ok: false };
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  try {
-    const { systemContent } = buildRouting(text);
-
-    // Primary: Claude Sonnet 4.6 via the Anthropic native Messages API.
-    // This replaces the previous (broken) OpenRouter-for-Claude path,
-    // which silently fell through to Llama in production because
-    // OpenRouter rejects Anthropic-format API keys with HTTP 401.
-    try {
-      const out = await callAnthropic(text, systemContent, claudeKey, {
-        temperature: getTemperatureForProvider("claude"),
-        maxTokens: ANTHROPIC_MAX_TOKENS,
-        signal: controller.signal,
-      });
-      return { text: out, ok: true };
-    } catch (anthropicError: any) {
-      console.error("Anthropic (primary) failed:", anthropicError.message);
-    }
-
-    // Fallback: Llama 3.3 70B via OpenRouter. Uses the shorter,
-    // Llama-tuned prompt from model-guides/llama-quick-reference.md (rather
-    // than the full 12-rule Claude prompt), plus the production safety
-    // appendix (OUTPUT LANGUAGE LOCK + placeholder marker preservation).
-    const sourceLangCode = getSourceLangCode(text);
-    const targetLangCode = getTargetLangCode(text);
-    const llamaPrompt = getSystemPromptForProvider(
-      "llama",
-      sourceLangCode,
-      targetLangCode,
-    );
-
-    try {
-      const out = await callOpenRouter(
-        text,
-        llamaPrompt,
-        MODELS.LLAMA,
-        "llama",
-        openrouterKey,
-        controller,
-      );
-      return { text: out, ok: true };
-    } catch (llamaError: any) {
-      console.error("Llama fallback failed:", llamaError.message);
-    }
-
-    console.error("All translation providers failed");
-    return { text, ok: false };
-  } catch (e: any) {
-    console.error("Translation error:", e.message);
-    return { text, ok: false };
-  } finally {
-    clearTimeout(timeoutId);
-  }
 }
 
 export async function POST(req: Request): Promise<Response> {

@@ -5,10 +5,14 @@
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { detectLanguage } from '../core/utils';
 
 // Path to memory storage file
-const MEMORY_FILE = join(dirname(import.meta.url), '..', 'data', 'memory.json');
+// import.meta.url is a `file://` URL string, not a filesystem path — passing
+// it straight to dirname() produces a bogus "file:/..." path. Convert it
+// first with fileURLToPath().
+const MEMORY_FILE = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'memory.json');
 
 // Maximum messages to store per conversation
 const MAX_MESSAGES_PER_GROUP = 20;
