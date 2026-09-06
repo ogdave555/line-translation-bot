@@ -156,46 +156,8 @@ export async function translate(
   request: TranslationRequest,
 ): Promise<TranslationResponse> {
   const config = getConfig();
-  const {
-    text,
-    sourceLanguage,
-    targetLanguage,
-    context,
-    testProvider,
-    bypassExplicitCheck,
-  } = request;
+  const { text, sourceLanguage, targetLanguage, context } = request;
   const isExplicit = containsExplicitContent(text);
-
-  // If testProvider specified, route directly to that provider
-  if (testProvider) {
-    try {
-      const translatedText = await runProvider(
-        testProvider,
-        text,
-        sourceLanguage,
-        targetLanguage,
-        config.openrouterApiKey,
-        config.openrouterSiteUrl,
-        config.openrouterSiteTitle,
-      );
-      return {
-        success: true,
-        translatedText,
-        usedFallback: false,
-        provider: testProvider,
-        usedExplicit: isExplicit,
-      };
-    } catch (error: any) {
-      return {
-        success: false,
-        translatedText: "",
-        usedFallback: false,
-        provider: testProvider,
-        usedExplicit: isExplicit,
-        error: error.message,
-      };
-    }
-  }
 
   // Primary: Claude Sonnet 4.6 via CLAUDE_API_KEY
   try {
@@ -413,7 +375,6 @@ export async function translateWithProfanityPipelineAndMemory(
   groupId: string,
   userId: string,
   text: string,
-  options?: { bypassExplicitCheck?: boolean },
 ): Promise<{
   success: boolean;
   translatedText?: string;
@@ -452,10 +413,6 @@ export async function translateWithMemory(
   groupId: string,
   userId: string,
   text: string,
-  options?: {
-    testProvider?: "claude" | "llama";
-    bypassExplicitCheck?: boolean;
-  },
 ): Promise<{
   success: boolean;
   translatedText?: string;
@@ -474,8 +431,6 @@ export async function translateWithMemory(
     sourceLanguage,
     targetLanguage,
     context,
-    testProvider: options?.testProvider,
-    bypassExplicitCheck: options?.bypassExplicitCheck,
   });
 
   return result.success

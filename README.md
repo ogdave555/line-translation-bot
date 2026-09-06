@@ -11,7 +11,7 @@ Features
 - 🔞 **Profanity preservation**: Translates profanity in both languages, no filtering
 - ⚡ **Smart response**: Optimized parameters for accuracy
 - 📱 **Smart filtering**: Skips images, videos, URLs, emojis, etc.
-- 🧪 **Testable**: Built-in test suite with `npm test` and provider endpoint checks
+- 🧪 **Manual smoke testing**: `/api/test-page` provides a browser-based harness with preset Thai/English test cases
 
 ## User Profiles
 
@@ -162,18 +162,18 @@ internal short codes (`en`, `th`) elsewhere. The prompt builder
 - Profanity words are translated normally if they exist in target language
 - If not, equivalent vulgar terms are used
 - No filtering or censorship
-- Hermes 3 handles both clean and explicit content as the primary provider
-- **Profanity preprocessing pipeline** (advanced): When testing fallback providers,
-  explicit content can be masked with `[PROFANITY:N]` markers so that Claude/Gemini
-  never see raw profanity. Masked tokens are then translated individually through Hermes.
+- Claude Sonnet 4.6 handles both clean and explicit content as the primary provider
+- **Profanity preprocessing pipeline** (advanced): When the Claude call fails on
+  explicit content and the cascade must fall through to Llama, the masked text is
+  translated through the cascade and each `[PROFANITY:N]` marker is then re-translated
+  individually through Claude.
 
 **Provider Cascade:**
 
-| Tier         | Provider         | Model                                  | Handles Explicit |
-| ------------ | ---------------- | -------------------------------------- | ---------------- |
-| 1 (primary)  | Hermes 3         | `nousresearch/hermes-3-llama-3.1-405b` | ✅ Yes           |
-| 2 (fallback) | Claude Sonnet 5  | `anthropic/claude-sonnet-5`            | ❌ No (blocked)  |
-| 3 (fallback) | Gemini 3.7 Flash | `google/gemini-3.7-flash`              | ❌ No (blocked)  |
+| Tier         | Provider             | Model                                | Endpoint                      | Handles Explicit |
+| ------------ | -------------------- | ------------------------------------ | ----------------------------- | ---------------- |
+| 1 (primary)  | Claude Sonnet 4.6    | `claude-sonnet-4-6`                  | Anthropic native Messages API | ✅ Yes           |
+| 2 (fallback) | Llama 3.3 70B        | `meta-llama/Llama-3.3-70B-Instruct`  | OpenRouter chat-completions   | ❌ No (masked)   |
 
 ### Context Awareness
 
@@ -199,17 +199,13 @@ npm run build
 # Run typecheck
 npm run typecheck
 
-# Run tests
-npm test
-npm run test:watch
-
-# Test provider endpoints
-npm run test:providers
-npm run test:models   # long battery of cases, writes JSON report to scripts/reports/
-npm run test:quality  # 3 regression cases x 3 models (profanity, numbers, Thai loanword)
-
 # Format code
 npm run format
+```
+
+Manual smoke testing: hit `/api/test-page` for a browser-based harness with
+preset Thai and English test cases (including profanity masking and Thai
+slang preservation).
 ```
 
 ## Project Structure
@@ -217,28 +213,30 @@ npm run format
 ```
 LINE-BOT/
 ├── api/
-│   └── webhook.ts          # Vercel serverless function
+│   ├── webhook.ts          # Vercel serverless function (POST + GET)
+│   └── test-page.ts        # Browser-based manual smoke-test harness
 ├── data/
-│   └── memory.json         # Conversation memory (auto-generated)
-├── scripts/
-│   ├── test-providers.cjs  # Single-message provider connectivity test
-│   ├── test-models.cjs     # Long battery: 7 cases x 3 models, JSON report
-│   ├── test-quality.cjs    # 3 regression cases x 3 models, pass/fail matrix
-│   └── reports/            # JSON reports from the test scripts (gitignored)
+│   └── memory.json         # Conversation memory (auto-generated, gitignored)
 ├── src/
-│   ├── bot.ts              # Bot event handlers
-│   ├── config.ts           # Configuration and system prompts
-│   ├── index.ts            # Entry point
-│   ├── memory.ts           # Conversation memory management
-│   ├── translator.ts       # Translation engine (Hermes primary cascade)
-│   └── utils.ts            # Helper functions
-├── tests/
-│   ├── translator.test.ts  # Unit tests for translator & config
-│   └── webhook.test.ts     # Unit tests for webhook logic
+│   ├── bot/
+│   │   ├── bot.ts          # Local CLI Bot class
+│   │   └── index.ts        # Local CLI entry point
+│   ├── core/
+│   │   ├── anthropic.ts    # Anthropic native Messages API client
+│   │   ├── config.ts       # MODELS, GEN_PARAMS, prompts, safety guard
+│   │   ├── types.ts        # Shared TypeScript types
+│   │   └── utils.ts        # Language detection, URL/emoji helpers
+│   └── translation/
+│       ├── memory.ts       # Per-group conversation memory (file-backed)
+│       └── translator.ts   # Translation engine (Claude → Llama cascade)
+├── model-guides/           # Reference prompts and glossary
+├── memory-bank/            # Institutional knowledge (project brief,
+│                           #   progress, tech context, system patterns,
+│                           #   active context)
 ├── .env.example            # Environment variable template
 ├── package.json
 ├── tsconfig.json
-├── vercel.json             # Vercel configuration
+├── vercel.json             # Vercel build + route configuration
 └── README.md
 ```
 
@@ -251,9 +249,12 @@ LINE-BOT/
 
 ### Translation failing
 
-- Check that OPENROUTER_API_KEY is set (this key provides access to all three models:
-  Hermes 3, Claude Sonnet 5, and Gemini 3.7 Flash)
-- Run `npm run test:providers` to verify all provider endpoints are accessible
+- Check that `CLAUDE_API_KEY` is a real **Anthropic** API key (not an
+  OpenRouter key — Anthropic-format keys are rejected by OpenRouter with
+  HTTP 401, and the cascade will silently fall through to Llama).
+- Check that `OPENROUTER_API_KEY` is set for the Llama fallback path.
+- Hit `/api/test-page` in a browser to send preset test cases through the
+  live webhook.
 
 ### Messages not translating
 

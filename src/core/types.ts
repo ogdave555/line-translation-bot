@@ -39,8 +39,6 @@ export interface TranslationRequest {
   sourceLanguage: 'en' | 'th';
   targetLanguage: 'en' | 'th';
   context?: Array<{ text: string; language: 'en' | 'th' }>;
-  testProvider?: 'claude' | 'llama';
-  bypassExplicitCheck?: boolean;
 }
 
 export interface TranslationResponse {
