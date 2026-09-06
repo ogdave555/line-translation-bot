@@ -59,3 +59,20 @@ selection).
   fixed-transliteration terms are needed, extend rule 14 in
   `buildSystemPrompt()` and the FIXED TRANSLITERATIONS line in
   `buildLlamaSystemPrompt()`.
+- **Refactor complete**: extracted shared cascade into
+  `src/core/translate.ts`. Both `api/webhook.ts` and `src/bot/`
+  now import from this single module. The two independent
+  cascade implementations have been eliminated.
+  - `src/core/translate.ts` exports: `runProvider`, `callOpenRouter`,
+    `validateProviderOutput`, `maskProfanity`, `detectLanguage`,
+    `getTargetLangCode`, `getSourceLangCode`, `translate`,
+    `translateWithMemory`, `translateWithProfanityPipeline`.
+  - `api/webhook.ts` imports `runProvider`, `maskProfanity`,
+    `getTargetLangCode`, `getSourceLangCode` from `src/core/translate.ts`.
+  - `src/translation/translator.ts` re-exports shared functions
+    and keeps `translateWithProfanityPipelineAndMemory`.
+  - `src/bot/bot.ts` and `src/bot/index.ts` import `translateWithMemory`
+    from `src/core/translate.ts`.
+  - `src/translation/memory.ts` updated with `fileURLToPath` fix.
+  - `New Files/` directory removed.
+

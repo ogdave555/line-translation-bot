@@ -120,6 +120,24 @@
     correct form and the forbidden variants.
   - Verified: both Claude and Llama prompts contain "กระท่อม" and the
     forbidden-spelling list.
+- [x] **Extracted shared cascade into src/core/translate.ts**
+  - Created `src/core/translate.ts` with shared cascade logic:
+    `runProvider`, `callOpenRouter`, `validateProviderOutput`,
+    `maskProfanity`, `detectLanguage`, `getTargetLangCode`,
+    `getSourceLangCode`, `translate`, `translateWithMemory`,
+    `translateWithProfanityPipeline`, `OPENROUTER_API_URL`.
+  - `api/webhook.ts` imports `runProvider`, `maskProfanity`,
+    `getTargetLangCode`, `getSourceLangCode` from `src/core/translate.ts`
+    instead of duplicating the cascade inline.
+  - `src/translation/translator.ts` re-exports shared functions from
+    `src/core/translate.ts` and keeps `translateWithProfanityPipelineAndMemory`.
+  - `src/bot/bot.ts` and `src/bot/index.ts` import `translateWithMemory`
+    from `src/core/translate.ts` instead of `src/translation/translator.ts`.
+  - `src/translation/memory.ts` updated with `fileURLToPath` fix.
+  - Removed `New Files/` directory (cleaned-up scratch copies).
+  - This eliminates the two independent cascade implementations that
+    were drifting apart (the `validateOutputScript` gap was a concrete
+    example).
 - [x] **Updated model-guides to reflect API routing**
   - `claude-quick-reference.md`: fixed provider from "OpenRouter" to
     "Anthropic native API", model ID from "anthropic/claude-sonnet-4.6"
