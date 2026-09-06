@@ -112,6 +112,14 @@
   - Smoke-verified: 11/11 cases pass (55/555/5555/5555555555 + whitespace
     variants → skip; single "5", "5555 hello", "hello 555", "55a55", "" →
     not skipped).
+- [x] **Fixed kratom transliteration**
+  - The bot kept rendering "kratom"/"Kratom" as "กระโต้ม", "กระต่ำ",
+    "กระทม", "กระทอม", etc. instead of the correct "กระท่อม".
+  - Added rule 14 "FIXED TRANSLITERATIONS" to `buildSystemPrompt()` and a
+    matching line in the Llama safety appendix, both spelling out the
+    correct form and the forbidden variants.
+  - Verified: both Claude and Llama prompts contain "กระท่อม" and the
+    forbidden-spelling list.
 
 ## Roadmap
 

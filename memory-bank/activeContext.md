@@ -55,3 +55,7 @@ selection).
   NAME PRESERVATION line in `buildLlamaSystemPrompt()`.
 - Follow-up: `isStandaloneThaiLaughter` only matches Arabic "5" runs.
   If Thai-script "๕๕๕" ever appears in practice, extend the regex.
+- Follow-up: the kratom rule is hardcoded to "กระท่อม". If more
+  fixed-transliteration terms are needed, extend rule 14 in
+  `buildSystemPrompt()` and the FIXED TRANSLITERATIONS line in
+  `buildLlamaSystemPrompt()`.
