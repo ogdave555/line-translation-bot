@@ -9,9 +9,10 @@ import {
   OPENROUTER_API_URL,
   WRONG_LANG_OUTPUT_REGEX,
   buildSystemPrompt,
-  appendHermesDirectives,
+  getSystemPromptForProvider,
 } from "../src/core/config.js";
 import { hasThaiText, cleanTextForTranslation } from "../src/core/utils.js";
+import { callAnthropic, ANTHROPIC_MAX_TOKENS } from "../src/core/anthropic.js";
 
 interface LineEvent {
   replyToken?: string;
@@ -26,7 +27,12 @@ interface WebhookRequestBody {
   challenge?: string;
 }
 
-const TIMEOUT_MS = 15000; // Per-chunk timeout (under Vercel's 30s maxDuration)
+// Per-call timeout. Vercel's maxDuration is 30s (see vercel.json), so we
+// leave a 5s safety margin. Anthropic Claude's documented P95 latency on
+// en→th is ~14s — 15s was too tight and forced spurious fallbacks to Llama
+// in production. 25s comfortably covers Claude without exhausting Vercel's
+// budget, so legitimate slow calls complete instead of being killed mid-flight.
+const TIMEOUT_MS = 25000;
 const CHUNK_THRESHOLD = 600; // Split messages above this length into independent chunks
 const MAX_REPLY_CHARS = 4500; // LINE text message limit (safe buffer under 5000)
 
@@ -140,7 +146,7 @@ function maskProfanity(text: string): {
 }
 
 /**
- * Translate using profanity pipeline: mask → translate → unmask via Hermes.
+ * Translate using profanity pipeline: mask → translate → unmask via Claude.
  *
  * Numbers, codes, and other untranslatable tokens (e.g. "1300", "255/65 R17
  * 110H") are returned VERBATIM by the model — we treat that as a successful
@@ -178,7 +184,8 @@ async function translateWithPipeline(
     }
   }
 
-  // Translate each profanity token individually through Claude (primary model handles all content)
+  // Translate each profanity token individually through the native Anthropic API
+  // (Claude is the primary model and handles ALL content, including explicit).
   const sourceLangCode = getSourceLangCode(text);
   const targetLangCode = getTargetLangCode(text);
   const claudeSystemContent = buildSystemPrompt(sourceLangCode, targetLangCode);
@@ -186,13 +193,15 @@ async function translateWithPipeline(
   const controller = new AbortController();
   const pipelineTimeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const translatedToken = await callOpenRouter(
+    const translatedToken = await callAnthropic(
       profanityTokens.join(" "),
       claudeSystemContent,
-      MODELS.CLAUDE,
-      "claude",
       claudeKey,
-      controller,
+      {
+        temperature: getTemperatureForProvider("claude"),
+        maxTokens: ANTHROPIC_MAX_TOKENS,
+        signal: controller.signal,
+      },
     );
 
     const translatedTokens = translatedToken.split(/\s+/);
@@ -203,7 +212,7 @@ async function translateWithPipeline(
     });
     return finalText;
   } catch (e: any) {
-    console.error("Pipeline Claude unmask failed:", e.message);
+    console.error("Pipeline Anthropic unmask failed:", e.message);
     return finalText;
   } finally {
     clearTimeout(pipelineTimeoutId);
@@ -253,22 +262,25 @@ async function translateChunked(
  * - Llama 3.3 70B serves as fallback.
  * - Per-provider temperature is resolved via getTemperatureForProvider().
  */
+/**
+ * Build the system prompt for a given chunk.
+ * - Claude Sonnet 4.6 is the primary provider for ALL content.
+ * - Llama 3.3 70B serves as fallback.
+ * - Per-provider temperature is resolved via getTemperatureForProvider().
+ *
+ * NOTE: We no longer need to return a model id here. Claude uses the
+ * native Anthropic API (model baked into callAnthropic()), and Llama uses
+ * MODELS.LLAMA inside the OpenRouter call.
+ */
 function buildRouting(
   text: string,
-  targetLang: string,
 ): {
-  model: string;
   systemContent: string;
-  provider: "claude" | "llama";
 } {
   const sourceLangCode = getSourceLangCode(text);
   const targetLangCode = getTargetLangCode(text);
   const base = buildSystemPrompt(sourceLangCode, targetLangCode);
-  return {
-    model: MODELS.CLAUDE,
-    systemContent: base,
-    provider: "claude",
-  };
+  return { systemContent: base };
 }
 
 async function callOpenRouter(
@@ -320,6 +332,7 @@ async function callOpenRouter(
   return trimmed;
 }
 
+
 /**
  * Result of a single translation call. Wrapping the output in an object
  * lets callers distinguish "model returned the same text because the input
@@ -334,8 +347,9 @@ interface TranslateResult {
 
 /**
  * Main translate function with routing:
- * 1. Claude Sonnet 4.6 (CLAUDE_API_KEY, primary for ALL content)
- * 2. Fallback → Llama 3.3 70B (OPENROUTER_API_KEY)
+ * 1. Claude Sonnet 4.6 via the Anthropic native Messages API
+ *    (CLAUDE_API_KEY, model `claude-sonnet-4-6`) — primary for ALL content.
+ * 2. Fallback → Llama 3.3 70B via OpenRouter (OPENROUTER_API_KEY).
  *
  * If any provider returns output containing Cyrillic / CJK characters,
  * WRONG_LANG_OUTPUT_REGEX rejects the response and the cascade continues.
@@ -357,28 +371,34 @@ async function translate(
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const { model, systemContent, provider } = buildRouting(text, targetLang);
+    const { systemContent } = buildRouting(text);
 
-    // Primary: Claude Sonnet 4.6 via CLAUDE_API_KEY
+    // Primary: Claude Sonnet 4.6 via the Anthropic native Messages API.
+    // This replaces the previous (broken) OpenRouter-for-Claude path,
+    // which silently fell through to Llama in production because
+    // OpenRouter rejects Anthropic-format API keys with HTTP 401.
     try {
-      const out = await callOpenRouter(
-        text,
-        systemContent,
-        model,
-        provider,
-        claudeKey,
-        controller,
-      );
+      const out = await callAnthropic(text, systemContent, claudeKey, {
+        temperature: getTemperatureForProvider("claude"),
+        maxTokens: ANTHROPIC_MAX_TOKENS,
+        signal: controller.signal,
+      });
       return { text: out, ok: true };
-    } catch (orError: any) {
-      console.error("Claude (primary) failed:", orError.message);
+    } catch (anthropicError: any) {
+      console.error("Anthropic (primary) failed:", anthropicError.message);
     }
 
-    // Fallback: Llama 3.3 70B via OPENROUTER_API_KEY
+    // Fallback: Llama 3.3 70B via OpenRouter. Uses the shorter,
+    // Llama-tuned prompt from model-guides/llama-quick-reference.md (rather
+    // than the full 12-rule Claude prompt), plus the production safety
+    // appendix (OUTPUT LANGUAGE LOCK + placeholder marker preservation).
     const sourceLangCode = getSourceLangCode(text);
     const targetLangCode = getTargetLangCode(text);
-    const basePrompt = buildSystemPrompt(sourceLangCode, targetLangCode);
-    const llamaPrompt = appendHermesDirectives(basePrompt);
+    const llamaPrompt = getSystemPromptForProvider(
+      "llama",
+      sourceLangCode,
+      targetLangCode,
+    );
 
     try {
       const out = await callOpenRouter(

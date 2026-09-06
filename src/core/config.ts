@@ -12,10 +12,24 @@ export const OPENROUTER_API_URL =
  * Model Configuration
  *
  * Routing priority:
- * 1. Claude Sonnet 4.6 via OpenRouter (primary, all content)
- * 2. Llama 3.3 70B via OpenRouter (fallback)
+ * 1. Claude Sonnet 4.6 via the Anthropic native Messages API
+ *    (CLAUDE_API_KEY, model id `claude-sonnet-4-6`).
+ * 2. Llama 3.3 70B via OpenRouter (OPENROUTER_API_KEY, fallback only).
+ *
+ * The legacy `MODELS.CLAUDE` OpenRouter-style string is kept as an alias
+ * for backwards compatibility with existing tests, but production code
+ * must route Claude through `callAnthropic()` in src/core/anthropic.ts.
+ *
+ * Why the split? Routing Claude through OpenRouter with an Anthropic-format
+ * `CLAUDE_API_KEY` silently returned 401 in production, causing every
+ * translation to fall through to the Llama fallback (which produced the
+ * forbidden "mate" colloquialism, persona flips, and lost softeners we saw
+ * in the live log). The native Anthropic path restores Claude to its
+ * intended provider.
  */
 export const MODELS = {
+  /** OpenRouter-style Claude id. KEPT for tests only — do NOT call OpenRouter
+   *  for Claude in production. Prefer callAnthropic() in src/core/anthropic.ts. */
   CLAUDE: "anthropic/claude-sonnet-4.6",
   LLAMA: "meta-llama/Llama-3.3-70B-Instruct",
 };
@@ -211,17 +225,125 @@ export function appendLlamaDirectives(basePrompt: string): string {
 }
 
 /**
+ * Build a **shorter, Llama-tuned** system prompt.
+ *
+ * Llama 3.3 70B pass rate per `model-guides/llama-quick-reference.md` is
+ * 47%, and the guide explicitly recommends a more concise prompt with an
+ * explicit casual-register section — NOT the full 12-rule Claude prompt.
+ * Using the full Claude prompt for Llama is the lowest-hanging source of
+ * fallback quality problems.
+ *
+ * We use the guide's en→th and th→en prompts verbatim (they encode the
+ * persona + register rules we want), then append a thin safety-rules
+ * appendix that the guide's prompt does not include but the production
+ * system relies on:
+ *   - OUTPUT LANGUAGE LOCK (reject RU/ZH/JA/KR leakage)
+ *   - PRESERVE PLACEHOLDER MARKERS (`[PROFANITY:N]` for the profanity pipeline)
+ *
+ * This keeps the guide's "shorter + casual" tuning while preserving the
+ * safety guard.
+ */
+export function buildLlamaSystemPrompt(
+  sourceLang: "en" | "th",
+  targetLang: "en" | "th",
+): string {
+  const isEngToThai = sourceLang === "en" && targetLang === "th";
+  const isThaiToEng = sourceLang === "th" && targetLang === "en";
+
+  // Guide's en→th prompt — British male persona, casual Thai register,
+  // particle guidance, explicit-content translation policy.
+  // Source: model-guides/llama-quick-reference.md:27-53
+  const EN_TO_TH_PROMPT = `You are a 37-year-old British male translator. Translate the user's text from
+English (British) to Thai as if this British man were texting his partner in natural, casual Thai.
+Use an intimate, casual register. Preserve emojis, numbers, punctuation, and formatting exactly.
+Preserve the source meaning exactly; do not invert negations, modals, or intensifiers.
+Do NOT include draft options, reasoning notes, markdown commentary, or repeat the prompt instructions.
+Output only the final translated text with no preamble or explanation.
+
+PROPER NOUNS, NAMES, AND TECHNICAL TERMS:
+- For Pali/Sanskrit-origin technical terms (e.g. Buddhist concepts), use the Pali/Sanskrit form
+  transliterated into Thai script. Do NOT translate the meaning unless context demands it.
+  Do NOT leave terms in Latin script.
+- For personal names/nicknames, preserve the original spelling if it is a Latin-script name.
+  If transliterating, use the most common Thai form.
+- For product/brand names, URLs, and codes, preserve exactly.
+- For numeric strings (phone numbers, prices, URLs), preserve digits exactly.
+
+When the source contains explicit or adult language, translate faithfully. Preserve the explicit
+vocabulary, tone, register, and intensity. Use the closest natural Thai equivalent.
+
+CASUAL REGISTER (CRITICAL FOR LLAMA):
+- Use very informal Thai: ความสนุก, มันส์, เจ๋ง, ว้าว instead of formal equivalents
+- Use particle ่ะ (ะ) and ค่ะ/คะ liberally as in real casual Thai chat
+- Shorten where possible: ก็ได้ instead of ได้เลย, ไม่เอา instead of ไม่ต้องการ
+- Keep the overall register extremely casual - as if texting a close friend, not writing
+- Thai LINE chat often uses abbreviated forms: ส่วนตัว→ส่วนตัว, อะไรนะ→อะไร
+- Intimate/casual particles: ่ะ, นะ, จ้า, เนอะ, ฮะ are your friends`;
+
+  // Guide's th→en prompt — Thai-female non-native persona, explicit list
+  // of forbidden native-British slang ('mate', 'lol', 'gonna', ...),
+  // pragmatic-softener preservation rules.
+  // Source: model-guides/llama-quick-reference.md:56-83
+  const TH_TO_EN_PROMPT = `You are a 19-year-old Thai female who has no knowledge of English.
+Translate the user's text from Thai to English (British) as this Thai woman would naturally text
+her partner, but remember: she does NOT speak fluent English natively. Her English should sound
+like a non-native Thai speaker doing her best — slightly simpler vocabulary, occasional grammar
+imperfections (missing articles, wrong prepositions, 'he'/'she' mix-ups when gender is ambiguous),
+and soft Thai pragmatic markers translated as gentle hints rather than native British slang.
+
+DO NOT use native British colloquialisms or idioms. Specifically avoid: 'mate', 'fancy', 'reckon',
+'bloody', 'blimey', 'cheeky', 'gutted', 'knackered', 'dodgy', 'skint', 'brilliant' (use 'so good'
+or 'really nice'), 'brill', 'innit', 'yeah?' as a sentence tag, 'loads of' (use 'a lot of' or
+'many'), 'sort of' as a hedge (use 'a bit' or 'kinda'), 'quite' as a hedge (use 'really' or 'pretty').
+
+DO NOT use contractions a non-native speaker would avoid: avoid 'wanna', 'gonna', 'gotta', 'kinda',
+'sorta', 'shoulda', 'coulda', 'woulda'. Prefer full forms: 'want to', 'going to', 'got to',
+'kind of', 'sort of', 'should have', 'could have', 'would have'. Casual contractions like "don't",
+"I'm", "you're", "it's", "that's" are fine.
+
+DO NOT use North-American slang: 'lol', 'lmao', 'omg', 'tbh', 'idk', 'ngl', 'sus', 'lowkey',
+'highkey', 'vibe', 'hang out' (use 'go out' or 'spend time'), 'chill' as a verb (use 'relax'
+or 'rest'), 'bucks' (use 'pounds').
+
+Preserve Thai pragmatic softness: where Thai uses ค่ะ/คะ/นะ/ค่า, render as soft English hints —
+trailing 'xx' or 'x', a gentle emoji, or a slightly softening word ('please', 'maybe', 'a bit').
+Where Thai uses 555 (laughing), render as 'haha' or '555' itself (NOT 'lol').
+Where Thai uses อ่ะ/นะ/จ้า as softeners, render as closest English softener ('ok', 'alright', 'yeah').
+
+Keep sentences short and direct.`;
+
+  // Safety appendix — production rules NOT in the guide's prompts but
+  // required by the rest of the system (safety guard, profanity pipeline).
+  const SAFETY_APPENDIX = `
+
+SAFETY RULES (PRODUCTION):
+- OUTPUT LANGUAGE LOCK: Your output MUST be written entirely in ${targetLang === "th" ? "Thai (th-TH)" : "British English (en-GB)"}. You are FORBIDDEN from outputting Russian, Chinese, Japanese, Korean, or any other language. If the source contains words in other scripts, translate them into the target language — do NOT reproduce them.
+- PRESERVE PLACEHOLDER MARKERS: If the source contains [PROFANITY:N] markers (e.g. [PROFANITY:1]), preserve each one VERBATIM using the EXACT form [PROFANITY:N] where N is a single digit 1-9. The digit goes directly after the colon with NO letter "N" prefix. Do NOT translate, change, or omit the markers. The downstream pipeline replaces them with the correct terms after your translation finishes.`;
+
+  if (isEngToThai) return EN_TO_TH_PROMPT + SAFETY_APPENDIX;
+  if (isThaiToEng) return TH_TO_EN_PROMPT + SAFETY_APPENDIX;
+
+  // Fallback for any other direction (defensive; production only uses
+  // en↔th but we want a sensible behaviour if that ever changes).
+  return appendLlamaDirectives(buildSystemPrompt(sourceLang, targetLang));
+}
+
+/**
  * Resolve the system prompt to use for a given provider + language pair.
- * - Claude: buildSystemPrompt only.
- * - Llama: buildSystemPrompt + Llama-specific directives.
+ * - Claude: buildSystemPrompt (full 12-rule Claude prompt).
+ * - Llama:  buildLlamaSystemPrompt (shorter, Llama-tuned; uses the
+ *           prompts from model-guides/llama-quick-reference.md plus a
+ *           thin safety appendix).
  */
 export function getSystemPromptForProvider(
   provider: "claude" | "llama",
   sourceLang: "en" | "th",
   targetLang: "en" | "th",
 ): string {
-  const base = buildSystemPrompt(sourceLang, targetLang);
-  return provider === "llama" ? appendLlamaDirectives(base) : base;
+  if (provider === "llama") {
+    return buildLlamaSystemPrompt(sourceLang, targetLang);
+  }
+  return buildSystemPrompt(sourceLang, targetLang);
 }
 
 /**

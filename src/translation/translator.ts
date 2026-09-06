@@ -25,6 +25,7 @@ import {
 } from "../core/config";
 import { TranslationResponse, TranslationRequest } from "../core/types";
 import { getRecentMessages, addToMemory } from "./memory";
+import { callAnthropic, ANTHROPIC_MAX_TOKENS } from "../core/anthropic";
 
 // OpenRouter API endpoint
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -92,6 +93,10 @@ function detectLanguage(text: string): "en" | "th" {
  * safety guard. If the model returns Cyrillic / CJK characters (a sign it
  * leaked into the wrong script), the result is rejected and we fall through
  * to the next provider instead of returning bad output.
+ *
+ * Routing:
+ * - `claude`  → Anthropic native Messages API (apiKey is the Anthropic key)
+ * - `llama`   → OpenRouter chat-completions (apiKey is the OpenRouter key)
  */
 async function runProvider(
   provider: "claude" | "llama",
@@ -102,21 +107,27 @@ async function runProvider(
   siteUrl?: string,
   siteTitle?: string,
 ): Promise<string> {
-  const model =
-    provider === "claude"
-      ? MODELS.CLAUDE
-      : MODELS.LLAMA;
-
   const prompt = getSystemPromptForProvider(
     provider,
     sourceLanguage,
     targetLanguage,
   );
+
+  if (provider === "claude") {
+    // Anthropic-native call. The safety guard inside callAnthropic() already
+    // rejects Cyrillic / CJK leakage, so no extra check is needed here.
+    return callAnthropic(text, prompt, apiKey, {
+      temperature: getTemperatureForProvider("claude"),
+      maxTokens: ANTHROPIC_MAX_TOKENS,
+    });
+  }
+
+  // Llama via OpenRouter.
   const raw = await callOpenRouter(
     text,
     prompt,
     apiKey,
-    model,
+    MODELS.LLAMA,
     provider,
     siteUrl,
     siteTitle,
@@ -355,21 +366,24 @@ export async function translateWithProfanityPipeline(
     }
   }
 
-  // Translate each profanity token individually through Claude (primary model handles all content)
+  // Translate each profanity token individually through the Anthropic
+  // native Messages API (Claude is the primary model and handles ALL content,
+  // including explicit). Previously this went through OpenRouter which
+  // silently failed when CLAUDE_API_KEY was an Anthropic-format key.
   const config = getConfig();
   const claudePrompt = getSystemPromptForProvider(
     "claude",
     sourceLanguage,
     targetLanguage,
   );
-  const translatedToken = await callOpenRouter(
+  const translatedToken = await callAnthropic(
     profanityTokens.join(" "),
     claudePrompt,
     config.claudeApiKey,
-    MODELS.CLAUDE,
-    "claude",
-    config.openrouterSiteUrl,
-    config.openrouterSiteTitle,
+    {
+      temperature: getTemperatureForProvider("claude"),
+      maxTokens: ANTHROPIC_MAX_TOKENS,
+    },
   );
 
   // Split the Claude result into individual token translations

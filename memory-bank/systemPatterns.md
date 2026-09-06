@@ -2,43 +2,57 @@
 
 ## Prompt builder pattern
 
-All translation prompts go through a single pipeline:
+Two prompt builders, one router:
 
-1. `buildSystemPrompt(sourceLang, targetLang)` — base prompt with:
-   - Speaker persona (older male for `en` source, younger female for `th` source)
-   - Pronoun rules per direction
-   - OUTPUT LANGUAGE LOCK (forbids RU/ZH/JA/KR; target name is "Thai" or
-     "British English")
-   - PRESERVE THAI INTERNET SLANG list (`555`, `ฮ่า`, `อิ`, …)
-   - PRESERVE EMOJIS rule
-   - NO HALLUCINATIONS rule
-   - THAI QUESTIONS rule (no `?` in en-GB → th-TH)
-   - Tag at the bottom: `Translate from en-GB to th-TH.`
+1. `buildSystemPrompt(sourceLang, targetLang)` — **full Claude prompt**.
+   12 rules (persona, pronoun rules, OUTPUT LANGUAGE LOCK,
+   PRESERVE THAI INTERNET SLANG, PRESERVE EMOJIS, NO HALLUCINATIONS,
+   THAI QUESTIONS, PRESERVE PLACEHOLDER MARKERS, NUMBERS/CODES/IDENTIFIERS,
+   THAI LOANWORDS, …). ~5k chars.
 
-2. `appendHermesDirectives(base)` — only for the Hermes provider. Adds:
-   - "NO meta-commentary, NO reasoning traces"
-   - "Translate idiomatically"
-   - "Thai words in the input must be preserved EXACTLY"
-   - `[PROFANITY:N]` marker substitution rule (used by the pipeline)
+2. `buildLlamaSystemPrompt(sourceLang, targetLang)` — **shorter,
+   Llama-tuned**. Per-direction prompt verbatim from
+   `model-guides/llama-quick-reference.md` (en→th = British male casual
+   register; th→en = Thai female non-native with explicit forbidden-slang
+   list), plus a thin **safety appendix** (OUTPUT LANGUAGE LOCK +
+   `[PROFANITY:N]` marker preservation) that the guide prompts don't
+   include but production relies on. ~2.5k chars.
 
-3. `getSystemPromptForProvider(provider, sourceLang, targetLang)` — combines
-   the two above per provider.
+3. `getSystemPromptForProvider(provider, sourceLang, targetLang)` —
+   routes:
+   - `claude` → `buildSystemPrompt(sourceLang, targetLang)`
+   - `llama`  → `buildLlamaSystemPrompt(sourceLang, targetLang)`
+
+The legacy `appendLlamaDirectives(base)` (and its deprecated alias
+`appendHermesDirectives`) still exists for back-compat, but is no longer
+used by production routing.
 
 ## Provider cascade pattern
 
 ```
-[Hermes 3] ──┐
-             │  fail
-[Claude Sonnet 5] ──┐   (only if !isExplicit || bypassExplicitCheck)
-                    │   fail
-[Gemini 3.7 Flash] ─┘
+[Claude Sonnet 4.6] (Anthropic API) ─── fail ───── [Llama 3.3 70B] (OpenRouter)
+                                          │
+                                          └── fail ── error message
 ```
 
-Each provider call goes through `runProvider()` which:
+- **Claude** is reached via the **Anthropic native Messages API** in
+  `src/core/anthropic.ts` (`callAnthropic()`).
+- **Llama** is reached via OpenRouter chat-completions in
+  `src/translation/translator.ts` (`callOpenRouter()`).
+- The two endpoints have different request shapes — do NOT collapse them.
 
-- Sends the request via `callOpenRouter()`
-- Checks the response against `WRONG_LANG_OUTPUT_REGEX`
-- Throws on empty / wrong-script output, allowing the cascade to fall through
+`runProvider()` (in `src/translation/translator.ts`) branches on
+`provider === "claude"` to call `callAnthropic()` and uses
+`callOpenRouter()` for everything else. The `api/webhook.ts` cascade
+calls each directly.
+
+The `WRONG_LANG_OUTPUT_REGEX` guard is applied:
+
+- Inside `callAnthropic()` (Claude path)
+- Inside `callOpenRouter()` (Llama path)
+- After masked-text translation in `translateWithProfanityPipeline()`
+
+Throwing on empty / wrong-script output lets the cascade fall through.
 
 ## Safety guard pattern
 

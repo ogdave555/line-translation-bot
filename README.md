@@ -7,7 +7,7 @@ Features
 - ✨ **Bi-directional translation**: English ↔ Thai
 - 🎯 **Personalized translations**: Tailored for specific user profiles
 - 🧠 **Conversation memory**: Remembers recent context for better translations
-- 🚀 **Triple AI routing**: Hermes 3 (405B, primary for ALL content) → Claude Sonnet 5 (fallback) → Gemini 3.7 Flash (second fallback), all via OpenRouter
+- 🚀 **Two-tier AI routing**: Claude Sonnet 4.6 (primary for ALL content, via the Anthropic native Messages API) → Llama 3.3 70B (fallback, via OpenRouter)
 - 🔞 **Profanity preservation**: Translates profanity in both languages, no filtering
 - ⚡ **Smart response**: Optimized parameters for accuracy
 - 📱 **Smart filtering**: Skips images, videos, URLs, emojis, etc.
@@ -48,13 +48,19 @@ CHANNEL_ACCESS_TOKEN=your_line_channel_access_token
 CHANNEL_SECRET=your_line_channel_secret
 
 # AI API Keys
-GEMINI_API_KEY=your_gemini_api_key
+CLAUDE_API_KEY=your_anthropic_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key
 
 # Optional (for OpenRouter attribution)
 OPENROUTER_SITE_URL=https://your-app.vercel.app
 OPENROUTER_SITE_TITLE=LINE Translation Bot
 ```
+
+- `CLAUDE_API_KEY` — Anthropic API key (used for Claude Sonnet 4.6 via
+  the **native Anthropic Messages API**, NOT OpenRouter). Get one at
+  <https://console.anthropic.com/>.
+- `OPENROUTER_API_KEY` — OpenRouter API key (used only for the Llama
+  fallback model). Get one at <https://openrouter.ai/>.
 
 ### 3. Create LINE Official Account
 
@@ -108,12 +114,13 @@ vercel
 2. Bot receives the message via webhook
 3. Bot detects message type (text vs image, etc.)
 4. Bot checks for explicit content (English/Thai profanity, sexual content)
-5. Hermes 3 (405B) translates the message via OpenRouter — handles ALL content (clean + explicit)
-6. Output is checked against `WRONG_LANG_OUTPUT_REGEX` (Cyrillic / CJK). If the model
-   leaked into the wrong script, the response is rejected and we fall through to the next provider.
-7. If Hermes fails → falls back to Claude Sonnet 5 (clean content only)
-8. If Claude also fails → falls back to Gemini 3.7 Flash (clean content only)
-9. Translation is sent as a reply
+5. **Claude Sonnet 4.6** translates the message via the **Anthropic native
+   Messages API** — handles ALL content (clean + explicit)
+6. Output is checked against `WRONG_LANG_OUTPUT_REGEX` (Cyrillic / CJK). If
+   the model leaked into the wrong script, the response is rejected and we
+   fall through to the next provider.
+7. If Claude fails → falls back to **Llama 3.3 70B** via OpenRouter
+8. Translation is sent as a reply
 
 ## Language Parameters
 
@@ -129,11 +136,10 @@ internal short codes (`en`, `th`) elsewhere. The prompt builder
 
 ### Per-provider temperature
 
-| Provider                    | Temperature | Rationale                                         |
-| --------------------------- | ----------- | ------------------------------------------------- |
-| Hermes 3 (primary)          | `0.3`       | slightly higher; less "rushing" into wrong tokens |
-| Claude Sonnet 5 (fallback)  | `0.2`       | deterministic for clean content                   |
-| Gemini 3.7 Flash (fallback) | `0.2`       | deterministic for clean content                   |
+| Provider                         | Temperature | Rationale                                  |
+| -------------------------------- | ----------- | ------------------------------------------ |
+| Claude Sonnet 4.6 (primary)      | `0.1`       | per `model-guides/claude-quick-reference.md` |
+| Llama 3.3 70B (fallback)         | `0.1`       | per `model-guides/llama-quick-reference.md` |
 
 ### Prompt rules
 

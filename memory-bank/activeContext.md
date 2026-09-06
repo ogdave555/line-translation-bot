@@ -2,18 +2,50 @@
 
 ## What we are working on right now
 
-**Model integration** — Integrated new models from model-guides:
-- Primary: Claude Sonnet 4.6 via Anthropic API (CLAUDE_API_KEY)
-- Fallback: Llama 3.3 70B via OpenRouter API (OPENROUTER_API_KEY)
+**Native Anthropic routing** — Claude Sonnet 4.6 is now reached via the
+Anthropic native Messages API (`https://api.anthropic.com/v1/messages`)
+instead of OpenRouter. Llama 3.3 70B stays on OpenRouter as the fallback.
 
 ## Recent decisions
 
-- **New provider cascade**: Claude → Llama (2-tier cascade, replacing old 3-tier)
-- **Claude via Anthropic direct**: Uses `claude-sonnet-4-6` model ID with CLAUDE_API_KEY
-- **Llama via OpenRouter**: Uses `meta-llama/Llama-3.3-70B-Instruct` with OPENROUTER_API_KEY
-- **Both models use temperature 0.1 and max_tokens 5000** (per model-guides)
-- **appendLlamaDirectives()** renamed from appendHermesDirectives (deprecated alias exists)
+- **New module `src/core/anthropic.ts`** with `callAnthropic()` that posts
+  to `https://api.anthropic.com/v1/messages` with `x-api-key` +
+  `anthropic-version` headers and the Anthropic-native body shape.
+- **Claude → Anthropic native** in both `api/webhook.ts` and
+  `src/translation/translator.ts` (runProvider() branches on provider).
+- **Llama → OpenRouter** unchanged (it was always correct).
+- **TIMEOUT_MS raised from 15s → 25s** in `api/webhook.ts` because Claude's
+  documented P95 on en→th (~14s) was too close to 15s, causing spurious
+  fallbacks to Llama. Vercel maxDuration is 30s (see `vercel.json`), so
+  25s leaves a 5s safety margin.
+- **MODELS.CLAUDE = `anthropic/claude-sonnet-4.6`** retained as a legacy
+  OpenRouter-style alias for test back-compat, but production code must
+  not call OpenRouter for Claude. The new constant is
+  `ANTHROPIC_CLAUDE_MODEL = "claude-sonnet-4-6"` in `src/core/anthropic.ts`.
+
+## Root cause we just fixed
+
+Routing Claude through OpenRouter silently failed in production with
+HTTP 401 (Anthropic-format `CLAUDE_API_KEY` is not a valid OpenRouter key).
+The cascade at every call site caught the 401 and fell through to Llama,
+producing the symptoms in the live log:
+
+- repeated "mate" (explicitly forbidden by rule 2 of `buildSystemPrompt()`)
+- persona flips (e.g. "หนูอยากโทร" on an en→th line that must be male)
+- lost Thai softeners ("ค่ะ" / "คะ" / "นะ")
+- invented currency ("£100" instead of "100")
+- wrong-meaning translations ("I've got a sore throat" for "hungry, mouth hurts")
+
+Tests didn't catch it because they only ever exercised the OpenRouter code
+path (which 401'd quietly, but the tests didn't assert on provider
+selection).
 
 ## Open work
 
-- None for this milestone. Models integrated and smoke test passes.
+- None for this milestone. Routes restored to intent; Llama fallback now
+  uses a shorter, guide-tuned prompt with the safety rules preserved.
+- Roadmap items unchanged (per-chunk context, prompt caching, /stats).
+- Follow-up: remove the legacy `MODELS.CLAUDE` OpenRouter-style alias
+  once no test references it.
+- Follow-up: rename `appendHermesDirectives` import in `api/webhook.ts`
+  to `appendLlamaDirectives` (cosmetic — the alias is deprecated).
