@@ -5,8 +5,8 @@
 
 import { LineBotClient } from '@line/bot-sdk';
 import { translateWithMemory } from '../core/translate.js';
-import { shouldSkipMessage, cleanTextForTranslation } from '../core/utils';
-import type { LineEvent } from '../core/types';
+import { shouldSkipMessage, cleanTextForTranslation } from '../core/utils.js';
+import type { LineEvent } from '../core/types.js';
 
 /**
  * Bot event handler class

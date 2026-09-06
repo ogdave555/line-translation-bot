@@ -13,7 +13,7 @@
  * profanity masking with conversation memory.
  */
 
-import { TranslationResponse, TranslationRequest } from "../core/types";
+import { TranslationResponse, TranslationRequest } from "../core/types.js";
 import { detectLanguage } from "../core/translate.js";
 import { addToMemory, getRecentMessages } from "./memory.js";
 import {

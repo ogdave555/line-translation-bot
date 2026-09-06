@@ -75,4 +75,3 @@ selection).
     from `src/core/translate.ts`.
   - `src/translation/memory.ts` updated with `fileURLToPath` fix.
   - `New Files/` directory removed.
-

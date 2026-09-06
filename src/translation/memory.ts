@@ -6,7 +6,7 @@
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectLanguage } from '../core/utils';
+import { detectLanguage } from '../core/utils.js';
 
 // Path to memory storage file
 // import.meta.url is a `file://` URL string, not a filesystem path — passing
