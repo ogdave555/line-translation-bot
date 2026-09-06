@@ -67,6 +67,89 @@ export const WRONG_LANG_OUTPUT_REGEX =
   /[\u0400-\u04FF]|[\u3040-\u30FF]|[\u3400-\u4DBF]|[\u4E00-\u9FFF]|[\uAC00-\uD7AF]/;
 
 /**
+ * Regex matching a run of Latin letters (a-z, A-Z), including
+ * accented Latin used by en-GB. Used to find stray Latin words.
+ */
+const LATIN_WORD_REGEX = /[A-Za-z\u00C0-\u024F]+/g;
+
+/**
+ * Regex matching a run of Thai characters (U+0E00..U+0E7F), including
+ * tone marks and vowels. Used to find stray Thai words.
+ */
+const THAI_WORD_REGEX = /[\u0E00-\u0E7F]+/g;
+
+/**
+ * Tokens that are allowed to appear in the "other" script even though
+ * they were not in the source. These are the legitimate exceptions:
+ * preserved names, codes, URLs, and the profanity pipeline markers.
+ */
+const ALLOWED_FOREIGN_TOKENS = [
+  "PROFANITY",
+  "http",
+  "https",
+  "www",
+  "vercel",
+  "line",
+];
+
+/**
+ * Validate that the provider's output does not contain hallucinated
+ * words in the wrong script.
+ *
+ * WRONG_LANG_OUTPUT_REGEX catches a model leaking into Cyrillic / CJK /
+ * Hangul, but it does NOT catch a hallucinated Latin word dropped into
+ * otherwise-pure Thai output (or a hallucinated Thai word dropped into
+ * English output). The 16:41 message — "yokewise" embedded in Thai —
+ * passed the script guard but was still a hallucination.
+ *
+ * This guard rejects output when it contains a word in the wrong script
+ * that does NOT appear in the source text. Legitimate preserved tokens
+ * (names, technical codes, URLs, [PROFANITY:N] markers) DO appear in
+ * the source, so they are allowed through.
+ *
+ * @returns null if valid, or an error message if the output should be
+ *          rejected and the cascade should fall through.
+ */
+export function validateOutputScript(
+  output: string,
+  source: string,
+  targetLanguage: "en" | "th",
+): string | null {
+  if (!output || !source) return null;
+
+  // Build a normalised set of source tokens for the "foreign" script.
+  // For th-TH output the foreign script is Latin; for en-GB output it
+  // is Thai.
+  const isTargetThai = targetLanguage === "th";
+  const foreignRegex = isTargetThai ? LATIN_WORD_REGEX : THAI_WORD_REGEX;
+  const sourceForeignRegex = isTargetThai
+    ? LATIN_WORD_REGEX
+    : THAI_WORD_REGEX;
+
+  // Collect source tokens in the foreign script (lower-cased, de-duplicated).
+  const sourceTokens = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = sourceForeignRegex.exec(source)) !== null) {
+    sourceTokens.add(m[0].toLowerCase());
+  }
+
+  // Also allow the always-allowed tokens.
+  for (const t of ALLOWED_FOREIGN_TOKENS) {
+    sourceTokens.add(t.toLowerCase());
+  }
+
+  // Scan the output for foreign-script words not present in the source.
+  while ((m = foreignRegex.exec(output)) !== null) {
+    const token = m[0].toLowerCase();
+    if (!sourceTokens.has(token)) {
+      return `Output contained hallucinated "${m[0]}" in the wrong script`;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resolve the effective temperature for a given provider name.
  */
 export function getTemperatureForProvider(provider: string): number {

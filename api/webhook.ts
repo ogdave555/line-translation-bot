@@ -8,6 +8,7 @@ import {
   getTemperatureForProvider,
   OPENROUTER_API_URL,
   WRONG_LANG_OUTPUT_REGEX,
+  validateOutputScript,
   buildSystemPrompt,
   getSystemPromptForProvider,
 } from "../src/core/config.js";
@@ -328,6 +329,14 @@ async function callOpenRouter(
     throw new Error(
       "OpenRouter output contained wrong-script characters (Cyrillic/CJK)",
     );
+  }
+  // Catch hallucinated words in the wrong script that the Cyrillic/CJK
+  // guard misses (e.g. "yokewise" embedded in Thai). Legitimate preserved
+  // tokens (names, codes, URLs, [PROFANITY:N] markers) are allowed
+  // through because they appear in the source.
+  const scriptError = validateOutputScript(trimmed, text, getTargetLangCode(text));
+  if (scriptError) {
+    throw new Error(`OpenRouter output failed script validation: ${scriptError}`);
   }
   return trimmed;
 }

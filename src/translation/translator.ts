@@ -20,6 +20,7 @@ import {
   containsExplicitContent,
   MODELS,
   WRONG_LANG_OUTPUT_REGEX,
+  validateOutputScript,
   englishExplicit,
   thaiExplicit,
 } from "../core/config";
@@ -89,10 +90,11 @@ function detectLanguage(text: string): "en" | "th" {
 }
 
 /**
- * Run a single provider's translation request and apply the WRONG_LANG_OUTPUT_REGEX
- * safety guard. If the model returns Cyrillic / CJK characters (a sign it
- * leaked into the wrong script), the result is rejected and we fall through
- * to the next provider instead of returning bad output.
+ * Run a single provider's translation request and apply the safety guards.
+ * If the model returns Cyrillic / CJK characters (a sign it leaked into the
+ * wrong script), or a hallucinated word in the wrong script (e.g. "yokewise"
+ * dropped into otherwise-pure Thai), the result is rejected and we fall
+ * through to the next provider instead of returning bad output.
  *
  * Routing:
  * - `claude`  → Anthropic native Messages API (apiKey is the Anthropic key)
@@ -138,6 +140,16 @@ async function runProvider(
       `${provider} output contained wrong-script characters (Cyrillic/CJK)`,
     );
   }
+
+  // Catch hallucinated words in the wrong script that the Cyrillic/CJK
+  // guard misses (e.g. "yokewise" embedded in Thai). Legitimate preserved
+  // tokens (names, codes, URLs, [PROFANITY:N] markers) are allowed through
+  // because they appear in the source.
+  const scriptError = validateOutputScript(raw, text, targetLanguage);
+  if (scriptError) {
+    throw new Error(`${provider} output failed script validation: ${scriptError}`);
+  }
+
   return raw;
 }
 
