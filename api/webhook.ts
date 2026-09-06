@@ -223,7 +223,6 @@ async function translateWithPipeline(
       claudeSystemContent,
       claudeKey,
       {
-        temperature: 0.1,
         maxTokens: ANTHROPIC_MAX_TOKENS,
         signal: controller.signal,
       },

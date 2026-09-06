@@ -183,7 +183,6 @@ export async function runProvider(
   const raw =
     provider === "claude"
       ? await callAnthropic(text, prompt, apiKey, {
-          temperature: getTemperatureForProvider("claude"),
           maxTokens: ANTHROPIC_MAX_TOKENS,
           signal,
         })
@@ -437,7 +436,6 @@ export async function translateWithProfanityPipeline(
       claudeSystemContent,
       getConfig().claudeApiKey,
       {
-        temperature: getTemperatureForProvider("claude"),
         maxTokens: ANTHROPIC_MAX_TOKENS,
         signal: controller.signal,
       },

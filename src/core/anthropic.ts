@@ -95,13 +95,11 @@ export async function callAnthropic(
   systemPrompt: string,
   apiKey: string,
   options: {
-    temperature?: number;
     maxTokens?: number;
     signal?: AbortSignal;
   } = {},
 ): Promise<string> {
   const {
-    temperature = 0.1,
     maxTokens = ANTHROPIC_MAX_TOKENS,
     signal,
   } = options;
@@ -127,7 +125,6 @@ export async function callAnthropic(
         },
       ],
       max_tokens: maxTokens,
-      temperature,
     }),
     ...(signal ? { signal } : {}),
   });
