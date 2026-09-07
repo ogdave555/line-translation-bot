@@ -7,6 +7,10 @@ import {
   hasThaiText,
   cleanTextForTranslation,
   isStandaloneThaiLaughter,
+  isEmojiOnly,
+  isUrlOnly,
+  isLineSystemMessage,
+  isOneWordResponse,
 } from "../src/core/utils.js";
 import { callAnthropic, ANTHROPIC_MAX_TOKENS } from "../src/core/anthropic.js";
 import {
@@ -327,6 +331,14 @@ export async function POST(req: Request): Promise<Response> {
       if (!isValidString(text)) continue;
       // Skip standalone Thai "hahaha" (runs of 5s) — nothing to translate.
       if (isStandaloneThaiLaughter(text)) continue;
+      // Skip emoji-only messages — nothing to translate.
+      if (isEmojiOnly(text)) continue;
+      // Skip URL/link-only messages — links don't need translation.
+      if (isUrlOnly(text)) continue;
+      // Skip LINE system messages (joins, leaves, etc.).
+      if (isLineSystemMessage(text)) continue;
+      // Skip one-word responses that don't need translation.
+      if (isOneWordResponse(text)) continue;
 
       // Guard against excessively long messages that would exceed LINE's reply limit
       if (text.length > MAX_REPLY_CHARS) {

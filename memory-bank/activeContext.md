@@ -2,9 +2,13 @@
 
 ## What we are working on right now
 
-**Native Anthropic routing** — Claude Sonnet 4.6 is now reached via the
-Anthropic native Messages API (`https://api.anthropic.com/v1/messages`)
-instead of OpenRouter. Llama 3.3 70B stays on OpenRouter as the fallback.
+**API call optimization** — Added filters to skip unnecessary API calls:
+- `isEmojiOnly()` — skips emoji-only messages
+- `isUrlOnly()` — skips URL/link-only messages
+- `isLineSystemMessage()` — skips LINE system messages (joins, leaves, etc.)
+- `isOneWordResponse()` — skips universal responses (yes, no, lol, haha, ok, etc.)
+
+These replace the previous single-filter approach with targeted skip functions.
 
 ## Recent decisions
 

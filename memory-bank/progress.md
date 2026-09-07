@@ -153,6 +153,17 @@
   - `glossary.md`: added "Fixed Transliterations" section with kratom
     and Miw entries, plus a "Post-Translation Guard" section.
 
+## Completed
+
+- [x] **Skip unnecessary API calls** (this commit)
+  - Added 4 new filter functions to `src/core/utils.ts`:
+    - `isEmojiOnly()` — skips emoji-only messages
+    - `isUrlOnly()` — skips URL/link-only messages
+    - `isLineSystemMessage()` — skips LINE system messages (joins, leaves, invites)
+    - `isOneWordResponse()` — skips universal responses (yes, no, ok, lol, haha, etc.)
+  - Wired all 4 filters into `api/webhook.ts` event loop alongside existing filters
+  - TypeScript compiles clean (`tsc --noEmit`)
+
 ## Roadmap
 
 - [ ] Optional: split long messages through `buildSystemPrompt` with a
