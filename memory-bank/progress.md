@@ -164,6 +164,20 @@
   - Wired all 4 filters into `api/webhook.ts` event loop alongside existing filters
   - TypeScript compiles clean (`tsc --noEmit`)
 
+## Completed
+
+- [x] **Glossary + Translation Cache** (this commit)
+  - Created `src/core/glossary.ts` with structured reference data adapted from DMTranslateApp
+  - Export: pragmatic particles, laughing expressions, pronouns, register levels, casual expressions, pali/sanskrit terms, numbers, script characters, word pairs, vulgar terms, relationship dynamics, LINE abbreviations, British English avoid list, softener mapping, place names, fixed transliterations, brand names, currency
+  - `formatGlossaryForPrompt()` builds formatted string for system prompt injection
+  - Wired glossary into `buildSystemPrompt()` in `src/core/config.ts`
+  - Created `src/core/cache.ts` with `TranslationCache` class:
+    - Exact match cache: full sentences cached after 3 identical repeats
+    - Sub-phrase cache: 2-4 word phrases cached after 3 uses across different sentences
+    - Both tiers require 3 occurrences before caching (avoids false positives)
+    - LRU eviction, 7-day TTL
+  - Integrated cache into `api/webhook.ts` event loop
+
 ## Roadmap
 
 - [ ] Optional: split long messages through `buildSystemPrompt` with a

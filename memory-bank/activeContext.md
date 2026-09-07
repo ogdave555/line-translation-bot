@@ -2,13 +2,15 @@
 
 ## What we are working on right now
 
-**API call optimization** — Added filters to skip unnecessary API calls:
-- `isEmojiOnly()` — skips emoji-only messages
-- `isUrlOnly()` — skips URL/link-only messages
-- `isLineSystemMessage()` — skips LINE system messages (joins, leaves, etc.)
-- `isOneWordResponse()` — skips universal responses (yes, no, lol, haha, ok, etc.)
-
-These replace the previous single-filter approach with targeted skip functions.
+**Glossary + Translation Cache** — Added structured glossary and two-tier translation cache:
+- `src/core/glossary.ts` — Structured reference data (pragmatic particles, laughing expressions, pronouns, register levels, casual expressions, pali/sanskrit terms, numbers, word pairs, vulgar terms, relationship dynamics, etc.)
+- `formatGlossaryForPrompt()` — Formats glossary for injection into system prompts
+- `src/core/cache.ts` — `TranslationCache` class with:
+  - Exact match cache: Full sentences cached after 3 identical repeats
+  - Sub-phrase cache: 2-4 word phrases cached after 3 uses across different sentences
+  - Both tiers require 3 occurrences before caching to avoid false positives
+- Cache integrated into `api/webhook.ts` event loop
+- Glossary wired into `buildSystemPrompt()` in config.ts
 
 ## Recent decisions
 

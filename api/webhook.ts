@@ -19,6 +19,7 @@ import {
   getTargetLangCode,
   getSourceLangCode,
 } from "../src/core/translate.js";
+import { getTranslationCache } from "../src/core/cache.js";
 
 interface LineEvent {
   replyToken?: string;
@@ -355,12 +356,58 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       const targetLang = isTargetEnglish(text) ? "English" : "Thai";
-      const translated = await translateChunked(
-        text,
-        targetLang,
-        claudeKey,
-        openrouterKey,
-      );
+      const sourceLangCode = getSourceLangCode(text);
+      const targetLangCode = getTargetLangCode(text);
+
+      // Check cache for exact match (only if threshold was reached)
+      const cache = getTranslationCache();
+      const sentenceKey = `${event.source?.userId || "anon"}:${text}`;
+      const usageResult = cache.recordUsage(text, sentenceKey);
+
+      // Check if we have a cached exact match
+      const cachedTranslation = cache.get(text, sourceLangCode, targetLangCode);
+      if (cachedTranslation) {
+        await client.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: "text", text: cachedTranslation }],
+        });
+        continue;
+      }
+
+      // Check for cached sub-phrases
+      const cachedPhrases = cache.getCachedPhrases(text, sourceLangCode, targetLangCode);
+
+      // Translate with cache tracking
+      let translated: string;
+      if (usageResult.exact && !cachedTranslation) {
+        // We have enough usage to cache, but haven't cached yet - translate and cache
+        translated = await translateChunked(text, targetLang, claudeKey, openrouterKey);
+
+        // Cache the full translation if successful and no errors
+        if (!translated.startsWith("⚠️")) {
+          cache.setExact(text, translated, sourceLangCode, targetLangCode);
+        }
+
+        // Also cache any phrases that hit threshold
+        for (const phrase of usageResult.phrases) {
+          // Extract and cache phrase translations
+          const phraseTranslation = await translateChunked(phrase, targetLang, claudeKey, openrouterKey);
+          if (!phraseTranslation.startsWith("⚠️")) {
+            cache.setPhrase(phrase, phraseTranslation, sourceLangCode, targetLangCode);
+          }
+        }
+      } else {
+        // Normal translation (threshold not reached yet)
+        translated = await translateChunked(text, targetLang, claudeKey, openrouterKey);
+
+        // Cache phrases that reached threshold during this translation
+        for (const phrase of usageResult.phrases) {
+          const phraseTranslation = await translateChunked(phrase, targetLang, claudeKey, openrouterKey);
+          if (!phraseTranslation.startsWith("⚠️")) {
+            cache.setPhrase(phrase, phraseTranslation, sourceLangCode, targetLangCode);
+          }
+        }
+      }
 
       await client.replyMessage({
         replyToken: event.replyToken,

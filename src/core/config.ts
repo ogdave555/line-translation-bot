@@ -1,4 +1,5 @@
 import { BotConfig } from "./types.js";
+import { formatGlossaryForPrompt } from "./glossary.js";
 import dotenv from "dotenv";
 
 // Load environment variables from .env file
@@ -295,7 +296,9 @@ STRICT RULES:
 13. PROPER NOUNS AND NICKNAMES: When the source contains a Thai nickname or name, transliterate it into the target language using the correct spelling — do NOT guess. The Thai nickname "มิว" (Miw) MUST be rendered as "Miw" in English output. It must NEVER be rendered as "Mew", "Mue", "Moo", or any other spelling. If a Thai name has a known Latin-script spelling, use that spelling exactly. When translating English → Thai, preserve the original Latin-script name verbatim (e.g. "Miw" stays "Miw" in the Thai output). This rule overrides any other instruction about transliteration.
 14. FIXED TRANSLITERATIONS: The following English terms have a single, fixed Thai transliteration that MUST be used — do NOT guess or use a different spelling:
     - "kratom" / "Kratom" -> "กระท่อม" (the medicinal plant). NEVER write it as "กระโต้ม", "กระต่ำ", "กระทม", "กระทอม", or any other variant.
-15. Translate from ${sourceTag} to ${targetTag}.`;
+15. Translate from ${sourceTag} to ${targetTag}.
+
+${formatGlossaryForPrompt()}`;
 }
 
 /**
